@@ -44,8 +44,8 @@ native physical_write_word(pa, value);
 native physical_write_dword(pa, value);
 native physical_write_qword(pa, value);
 
-native io_space_map(pa, size);
-native io_space_unmap(pa, size);
+//native io_space_map(pa, size);
+//native io_space_unmap(va, size);
 
 native virtual_read_byte(va, &value);
 native virtual_read_word(va, &value);
@@ -65,15 +65,15 @@ native virtual_cmpxchg_qword(va, exchange, comparand);
 native virtual_alloc(size);
 native virtual_free(va);
 
-native pci_config_read_byte(pa, &value);
-native pci_config_read_word(pa, &value);
-native pci_config_read_dword(pa, &value);
-native pci_config_read_qword(pa, &value);
+native pci_config_read_byte(bus, device, function, offset, &value);
+native pci_config_read_word(bus, device, function, offset, &value);
+native pci_config_read_dword(bus, device, function, offset, &value);
+native pci_config_read_qword(bus, device, function, offset, &value);
 
-native pci_config_write_byte(pa, value);
-native pci_config_write_word(pa, value);
-native pci_config_write_dword(pa, value);
-native pci_config_write_qword(pa, value);
+native pci_config_write_byte(bus, device, function, offset, value);
+native pci_config_write_word(bus, device, function, offset, value);
+native pci_config_write_dword(bus, device, function, offset, value);
+native pci_config_write_qword(bus, device, function, offset, value);
 
 native get_proc_address(name[]);
 native invoke(address, &retval, a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0, a8=0, a9=0, a10=0, a11=0, a12=0, a13=0, a14=0, a15=0);

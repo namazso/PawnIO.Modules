@@ -19,3 +19,14 @@
 #define SIGN_EXTEND8(%1) (SIGN_EXTEND(%1, 8))
 #define SIGN_EXTEND16(%1) (SIGN_EXTEND(%1, 16))
 #define SIGN_EXTEND32(%1) (SIGN_EXTEND(%1, 32))
+
+#define CHAR4_CONST(%1,%2,%3,%4) ((%1) | ((%2) << 8)  | ((%3) << 16) | ((%4) << 24))
+
+stock _min(a, b) {
+    return a < b ? a : b;
+}
+
+stock _max(a, b) {
+    return a > b ? a : b;
+}
+

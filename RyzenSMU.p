@@ -99,42 +99,6 @@ CodeName:get_code_name(family, model, pkg_type) {
     return CPU_Undefined;
 }
 
-#define PMSIZE[CodeName:.cn, .version, .size]
-
-new const k_pmsize[][PMSIZE] = [
-    [ CPU_Matisse, 0x240902, 0x514 ],
-    [ CPU_Matisse, 0x240903, 0x518 ],
-    [ CPU_Matisse, 0x240802, 0x7E0 ],
-    [ CPU_Matisse, 0x240803, 0x7E4 ],
-    [ CPU_Vermeer, 0x2D0903, 0x594 ],
-    [ CPU_Vermeer, 0x380904, 0x5A4 ],
-    [ CPU_Vermeer, 0x380905, 0x5D0 ],
-    [ CPU_Vermeer, 0x2D0803, 0x894 ],
-    [ CPU_Vermeer, 0x380804, 0x8A4 ],
-    [ CPU_Vermeer, 0x380805, 0x8F0 ],
-    [ CPU_Renoir,  0x370000, 0x794 ],
-    [ CPU_Renoir,  0x370001, 0x884 ],
-    [ CPU_Renoir,  0x370002, 0x88C ],
-    [ CPU_Renoir,  0x370003, 0x88C ],
-    [ CPU_Renoir,  0x370004, 0x8AC ],
-    [ CPU_Renoir,  0x370005, 0x8C8 ],
-    [ CPU_Cezanne, 0x400005, 0x944 ],
-    [ CPU_Picasso,        0, 0x608 + 0xA4 ],
-    [ CPU_RavenRidge,     0, 0x608 + 0xA4 ],
-    [ CPU_RavenRidge2,    0, 0x608 + 0xA4 ],
-    [ CPU_Raphael, 0x540004, 0x948 ],
-];
-
-pm_table_size(CodeName:code_name, version, &size) {
-    for (new i = 0; i < sizeof k_pmsize; i++) {
-        if (k_pmsize[i].cn == code_name && (!k_pmsize[i].version || k_pmsize[i].version == version)) {
-            size = k_pmsize[i].size;
-            return STATUS_SUCCESS;
-        }
-    }
-    return STATUS_NOT_SUPPORTED;
-}
-
 #define ADDRINFO[.cmd, .rsp, .args]
 
 new const k_addrinfo[][ADDRINFO] = [
@@ -397,22 +361,16 @@ get_pm_table_base(&base) {
 }
 
 new g_table_base;
-new g_table_size;
 
 forward ioctl_resolve_pm_table(in[], in_size, out[], out_size);
 public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
-    if (out_size < 3)
+    if (out_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     new version;
     new status = get_pm_table_version(version);
     if (!NT_SUCCESS(status))
         return status;
     debug_print(''RyzenSMU: PM Table Version: %x\n'', version);
-    new table_size;
-    status = pm_table_size(g_code_name, version, table_size);
-    if (!NT_SUCCESS(status))
-        return status;
-    debug_print(''RyzenSMU: PM Table Size: %x\n'', table_size);
     new table_base;
     status = get_pm_table_base(table_base);
     if (!NT_SUCCESS(status))
@@ -420,11 +378,9 @@ public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
     debug_print(''RyzenSMU: PM Table Base: %x\n'', table_base);
 
     g_table_base = table_base;
-    g_table_size = table_size;
 
     out[0] = version;
     out[1] = table_base;
-    out[2] = table_size;
 
     return STATUS_SUCCESS;
 }
@@ -436,9 +392,9 @@ public ioctl_update_pm_table(in[], in_size, out[], out_size) {
 
 forward ioctl_read_pm_table(in[], in_size, out[], out_size);
 public ioctl_read_pm_table(in[], in_size, out[], out_size) {
-    if (!g_table_base || !g_table_size)
+    if (!g_table_base)
         return STATUS_DEVICE_NOT_READY;
-    new read_count = _min(out_size, g_table_size / 8);
+    new read_count = _min(out_size, PAGE_SIZE / 8);
     new read_size = read_count * 8;
     new va = io_space_map(g_table_base, read_size);
     new status = STATUS_SUCCESS;

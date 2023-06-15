@@ -30,3 +30,5 @@ stock _max(a, b) {
     return a > b ? a : b;
 }
 
+#define PAGE_SIZE (0x1000)
+

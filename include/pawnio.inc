@@ -34,8 +34,8 @@ stock io_space_map(pa, size) {
         if (!MmMapIoSpace)
             return 0;
     }
-    new retval;
-    new excpt = invoke(MmMapIoSpace, retval, pa, size, 0 /* MmNonCached */);
+    new retval = 0;
+    new excpt = fix_status(invoke(MmMapIoSpace, retval, pa, size, 0 /* MmNonCached */));
     if (!NT_SUCCESS(excpt))
         return 0;
     return retval;
@@ -48,8 +48,30 @@ stock io_space_unmap(va, size) {
         if (!MmUnmapIoSpace)
             return 0;
     }
-    new retval;
+    new retval = 0;
     invoke(MmUnmapIoSpace, retval, va, size);
     return 0;
 }
+
+stock microsleep(us) {
+    new p = virtual_alloc(8);
+    if (!p)
+        return STATUS_NO_MEMORY;
+    virtual_write_qword(p, -10000 * us);
+    static KeDelayExecutionThread = 0;
+    if (!KeDelayExecutionThread) {
+        KeDelayExecutionThread = get_proc_address(''KeDelayExecutionThread'');
+        if (!KeDelayExecutionThread)
+            return STATUS_UNSUCCESSFUL;
+    }
+    new retval = 0;
+    invoke(KeDelayExecutionThread, retval, 0 /* KernelMode */, 0 /* FALSE */, p);
+    virtual_free(p);
+    return fix_status(retval);
+}
+
+stock fix_status(status) {
+    return SIGN_EXTEND32(status);
+}
+
 

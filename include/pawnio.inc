@@ -57,7 +57,7 @@ stock microsleep(us) {
     new p = virtual_alloc(8);
     if (!p)
         return STATUS_NO_MEMORY;
-    virtual_write_qword(p, -10000 * us);
+    virtual_write_qword(p, -10 * us);
     static KeDelayExecutionThread = 0;
     if (!KeDelayExecutionThread) {
         KeDelayExecutionThread = get_proc_address(''KeDelayExecutionThread'');

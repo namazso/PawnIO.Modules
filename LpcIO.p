@@ -435,6 +435,9 @@ public ioctl_mmio_write(in[], in_size, out[], out_size) {
 }
 
 is_port_allowed(port) {
+    if (port == g_register_port || port == g_value_port)
+        return true;
+
     // we assume that each BAR is a range of 8 bytes at most
     new port_clamped = port & 0xFFF8;
     new valid = false;

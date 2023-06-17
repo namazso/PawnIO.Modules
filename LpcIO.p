@@ -247,7 +247,7 @@ detect_chip(search_for_mmio) {
 
 forward ioctl_detect(in[], in_size, out[], out_size);
 public ioctl_detect(in[], in_size, out[], out_size) {
-    if (in_size < 2)
+    if (in_size < IOCTL_IN_OFFSET + 2)
         return STATUS_BUFFER_TOO_SMALL;
 
     if (out_size < 1)
@@ -255,8 +255,10 @@ public ioctl_detect(in[], in_size, out[], out_size) {
 
     reset();
 
-    new slot = in[0];
-    new should_scan_for_mmio = in[1];
+    new slot = in[IOCTL_IN_OFFSET + 0];
+    new should_scan_for_mmio = in[IOCTL_IN_OFFSET + 1];
+
+    debug_print(''LpcIO: Scanning slot %d. Scanning for mmio: %d\n'', slot, should_scan_for_mmio);
 
     if (slot == 0) {
         g_register_port = 0x2e;
@@ -277,12 +279,12 @@ public ioctl_detect(in[], in_size, out[], out_size) {
 
 forward ioctl_read(in[], in_size, out[], out_size);
 public ioctl_read(in[], in_size, out[], out_size) {
-    if (in_size < 1)
+    if (in_size < IOCTL_IN_OFFSET + 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new reg = in[0] & 0xFF;
+    new reg = in[IOCTL_IN_OFFSET + 0] & 0xFF;
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -293,11 +295,11 @@ public ioctl_read(in[], in_size, out[], out_size) {
 
 forward ioctl_write(in[], in_size, out[], out_size);
 public ioctl_write(in[], in_size, out[], out_size) {
-    if (in_size < 2)
+    if (in_size < IOCTL_IN_OFFSET + 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new reg = in[0] & 0xFF;
-    new val = in[1] & 0xFF;
+    new reg = in[IOCTL_IN_OFFSET + 0] & 0xFF;
+    new val = in[IOCTL_IN_OFFSET + 1] & 0xFF;
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -346,13 +348,13 @@ public ioctl_exit(in[], in_size, out[], out_size) {
 
 forward ioctl_mmio_read(in[], in_size, out[], out_size);
 public ioctl_mmio_read(in[], in_size, out[], out_size) {
-    if (in_size < 2)
+    if (in_size < IOCTL_IN_OFFSET + 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new offset = in[0];
-    new size = in[1];
+    new offset = in[IOCTL_IN_OFFSET + 0];
+    new size = in[IOCTL_IN_OFFSET + 1];
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -392,12 +394,12 @@ public ioctl_mmio_read(in[], in_size, out[], out_size) {
 
 forward ioctl_mmio_write(in[], in_size, out[], out_size);
 public ioctl_mmio_write(in[], in_size, out[], out_size) {
-    if (in_size < 3)
+    if (in_size < IOCTL_IN_OFFSET + 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new offset = in[0];
-    new size = in[1];
-    new value = in[2];
+    new offset = in[IOCTL_IN_OFFSET + 0];
+    new size = in[IOCTL_IN_OFFSET + 1];
+    new value = in[IOCTL_IN_OFFSET + 2];
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -447,12 +449,12 @@ is_port_allowed(port) {
 
 forward ioctl_pio_read(in[], in_size, out[], out_size);
 public ioctl_pio_read(in[], in_size, out[], out_size) {
-    if (in_size < 1)
+    if (in_size < IOCTL_IN_OFFSET + 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new port = in[0] & 0xFFFF;
+    new port = in[IOCTL_IN_OFFSET + 0] & 0xFFFF;
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -466,11 +468,11 @@ public ioctl_pio_read(in[], in_size, out[], out_size) {
 
 forward ioctl_pio_write(in[], in_size, out[], out_size);
 public ioctl_pio_write(in[], in_size, out[], out_size) {
-    if (in_size < 2)
+    if (in_size < IOCTL_IN_OFFSET + 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new port = in[0] & 0xFFFF;
-    new value = in[1];
+    new port = in[IOCTL_IN_OFFSET + 0] & 0xFFFF;
+    new value = in[IOCTL_IN_OFFSET + 1];
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;

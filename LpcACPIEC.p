@@ -23,12 +23,12 @@ is_port_allowed(port) {
 
 forward ioctl_pio_read(in[], in_size, out[], out_size);
 public ioctl_pio_read(in[], in_size, out[], out_size) {
-    if (in_size < 1)
+    if (in_size < IOCTL_IN_OFFSET + 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new port = in[0] & 0xFFFF;
+    new port = in[IOCTL_IN_OFFSET + 0] & 0xFFFF;
 
     if (!is_port_allowed(port))
         return STATUS_ACCESS_DENIED;
@@ -39,11 +39,11 @@ public ioctl_pio_read(in[], in_size, out[], out_size) {
 
 forward ioctl_pio_write(in[], in_size, out[], out_size);
 public ioctl_pio_write(in[], in_size, out[], out_size) {
-    if (in_size < 2)
+    if (in_size < IOCTL_IN_OFFSET + 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new port = in[0] & 0xFFFF;
-    new value = in[1];
+    new port = in[IOCTL_IN_OFFSET + 0] & 0xFFFF;
+    new value = in[IOCTL_IN_OFFSET + 1];
 
     if (!is_port_allowed(port))
         return STATUS_ACCESS_DENIED;

@@ -35,6 +35,7 @@ const DEVICE_SELECT_REGISTER = 0x07;
 new g_register_port;
 new g_value_port;
 new g_type;
+new g_mmio_base;
 new g_bars[128];
 new g_bars_count = 0;
 
@@ -42,6 +43,7 @@ reset() {
     g_register_port = 0;
     g_value_port = 0;
     g_type = 0;
+    g_mmio_base = 0;
     g_bars_count = 0;
 }
 
@@ -172,6 +174,8 @@ detect_chip() {
         // it's IT87!
         g_type = (Vendor_IT87 << 32) | (chip_id << 8) | (chip_revision);
         find_bars();
+
+        it87_find_mmio();
 
         it87_exit();
         return;
@@ -350,9 +354,7 @@ public ioctl_pio_write(in[], in_size, out[], out_size) {
 
 it87_find_mmio() {
     if (g_register_port != 0x4e)
-        return 0;
-
-    new base = 0;
+        return false;
 
     const IT87XX_SMFI_LDN = 0x0F;
     const IT87_SMFI_HLPC_RAM_BAR = 0xF5;
@@ -367,7 +369,7 @@ it87_find_mmio() {
     new enabled_v = read_byte(IT87_LD_ACTIVE_REGISTER);
 
     if (enabled != enabled_v || !enabled)
-        return 0;
+        return false;
 
     new word = read_word(IT87_SMFI_HLPC_RAM_BAR);
     new high = read_byte(IT87_SMFI_HLPC_RAM_BAR_HIGH);
@@ -378,20 +380,20 @@ it87_find_mmio() {
     new high_v = read_byte(IT87_SMFI_HLPC_RAM_BAR_HIGH);
 
     if (word_v != word_v)
-        return 0;
+        return false;
 
     if ((g_type & 0xFFFF) == 0x8695) {
         // IT87952E
 
         if (high != high_v)
-            return 0;
+            return false;
 
-        base = 0xFC000000 | (word & 0xF000) | ((word & 0xFF) << 16) | ((high & 0xF) << 24);
+        g_mmio_base = 0xFC000000 | (word & 0xF000) | ((word & 0xFF) << 16) | ((high & 0xF) << 24);
     } else {
-        base = 0xFF000000 | (word & 0xF000) | ((word & 0xFF) << 16);
+        g_mmio_base = 0xFF000000 | (word & 0xF000) | ((word & 0xFF) << 16);
     }
 
-    return base;
+    return true;
 }
 
 set_gigabyte_controller(enable, &old) {
@@ -415,12 +417,7 @@ set_gigabyte_controller(enable, &old) {
     if ((didvid & 0xFFFF) != 0x1022)
         return STATUS_NOT_SUPPORTED;
 
-    // this code should be running in already entered state, but we enter again just to make sure
-    it87_enter();
-
-    new base = it87_find_mmio();
-
-    if (!base)
+    if (!g_mmio_base)
         return STATUS_NOT_FOUND;
 
     const ioOrMemoryPortDecodeEnableReg = 0x48;
@@ -430,7 +427,7 @@ set_gigabyte_controller(enable, &old) {
     const ControllerEnableRegister = 0x47;
     const ControllerFanControlArea = 0x900;
 
-    new pciAddressStart = base >> 0x10;
+    new pciAddressStart = g_mmio_base >> 0x10;
     new pciAddressEnd = pciAddressStart + 1;
 
     new enabledPciMemoryAddressRegister = pciAddressEnd << 0x10 | pciAddressStart;
@@ -462,7 +459,7 @@ set_gigabyte_controller(enable, &old) {
         pci_config_write_dword(0x0, 0x14, 0x3, romAddressRange2Register, enabledRomAddressRegister);
     }
 
-    new va = io_space_map(base, PAGE_SIZE);
+    new va = io_space_map(g_mmio_base, PAGE_SIZE);
     if (va) {
         new controllerFanControlAddress = va + ControllerFanControlArea;
         new controllerFanControlEnabled = controllerFanControlAddress + ControllerEnableRegister;
@@ -472,7 +469,7 @@ set_gigabyte_controller(enable, &old) {
             status = fix_status(virtual_write_byte(controllerFanControlEnabled, enable));
         }
 
-        io_space_unmap(base, PAGE_SIZE);
+        io_space_unmap(va, PAGE_SIZE);
     } else {
         status = STATUS_NO_MEMORY;
     }

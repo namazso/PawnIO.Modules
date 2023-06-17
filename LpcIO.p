@@ -28,11 +28,20 @@ const CHIP_ID_REGISTER = 0x20;
 const CHIP_REVISION_REGISTER = 0x21;
 
 const BASE_ADDRESS_REGISTER = 0x60;
+const BASE_ADDRESS_REGISTER_2 = 0x62;
+
+const DEVICE_SELECT_REGISTER = 0x07;
+const IT87XX_SMFI_LDN = 0x0F;
+const IT87_SMFI_HLPC_RAM_BAR = 0xF5;
+const IT87_SMFI_HLPC_RAM_BAR_HIGH = 0xFC;
+const IT87_LD_ACTIVE_REGISTER = 0x30;
 
 new const CHIP_REGISTER_PORT[] = [ 0x2e, 0x4e ];
 new const CHIP_VALUE_PORT[] = [ 0x2f, 0x4f ];
 new g_chip_type[] = [ 0, 0 ];
-new g_chip_ec_base[] = [ 0, 0 ];
+new g_chip_mmio_base[] = [ 0, 0 ];
+new g_bars[1024];
+new g_bars_count = 0;
 
 read_byte(register_port, value_port, reg) {
     io_out_byte(register_port, reg);
@@ -42,6 +51,10 @@ read_byte(register_port, value_port, reg) {
 write_byte(register_port, value_port, reg, val) {
     io_out_byte(register_port, reg);
     io_out_byte(value_port, val);
+}
+
+select(register_port, value_port, val) {
+    write_byte(register_port, value_port, DEVICE_SELECT_REGISTER, val);
 }
 
 read_word(register_port, value_port, reg) {
@@ -79,13 +92,7 @@ smsc_exit(register_port) {
     io_out_byte(register_port, 0xaa);
 }
 
-const DEVICE_SELECT_REGISTER = 0x07;
-const IT87XX_SMFI_LDN = 0x0F;
-const IT87_SMFI_HLPC_RAM_BAR = 0xF5;
-const IT87_SMFI_HLPC_RAM_BAR_HIGH = 0xFC;
-const IT87_LD_ACTIVE_REGISTER = 0x30;
-
-it87_find_ec(register_port, value_port, type, &base) {
+it87_find_mmio(register_port, value_port, type, &base) {
     base = 0;
 
     // Check if the SMFI logical device is enabled
@@ -123,7 +130,47 @@ it87_find_ec(register_port, value_port, type, &base) {
     return true;
 }
 
-detect_chip(register_port, value_port, &type, search_for_ec, &ec_base) {
+check_bar(val, val_v) {
+    if (val == val_v && val != 0 && val != 0xFFFF) {
+        // in fixed range, probably some garbage
+        if (val < 0x100)
+            return;
+
+        // some Fintek chips have address register offset 0x05 added already
+        if ((val & 0x07) == 0x05)
+            val &= 0xFFF8;
+
+        // duplicate
+        if (g_bars_count > 0 && g_bars[g_bars_count - 1] == val)
+            return;
+
+        g_bars[g_bars_count] = val;
+        g_bars_count++;
+        debug_print(''LpcIO: Added %X as BAR\n'', val);
+    }
+}
+
+find_bars(register_port, value_port) {
+    debug_print(''LpcIO: Finding BARs for %x\n'', register_port);
+    new vals[256][2];
+    for (new i = 0; i < 0x100; i++) {
+        select(register_port, value_port, i);
+        vals[i][0] = read_word(register_port, value_port, BASE_ADDRESS_REGISTER);
+        vals[i][1] = read_word(register_port, value_port, BASE_ADDRESS_REGISTER_2);
+    }
+    microsleep(1000);
+    for (new i = 0; i < 0x100; i++) {
+        select(register_port, value_port, i);
+        new vals_v[2];
+        vals_v[0] = read_word(register_port, value_port, BASE_ADDRESS_REGISTER);
+        vals_v[1] = read_word(register_port, value_port, BASE_ADDRESS_REGISTER_2);
+
+        check_bar(vals[i][0], vals_v[0]);
+        check_bar(vals[i][1], vals_v[1]);
+    }
+}
+
+detect_chip(register_port, value_port, &type, search_for_mmio, &mmio_base) {
     new chip_id, chip_revision;
     type = 0;
 
@@ -137,6 +184,7 @@ detect_chip(register_port, value_port, &type, search_for_ec, &ec_base) {
     if (chip_id != 0x00 && chip_id != 0xff) {
         // it's Winbond!
         type = (Vendor_Winbond << 32) | (chip_id << 8) | (chip_revision);
+        find_bars(register_port, value_port);
         winbond_exit(register_port);
         return;
     }
@@ -151,9 +199,10 @@ detect_chip(register_port, value_port, &type, search_for_ec, &ec_base) {
     if (chip_id != 0x00 && chip_id != 0xff) {
         // it's IT87!
         type = (Vendor_IT87 << 32) | (chip_id << 8) | (chip_revision);
+        find_bars(register_port, value_port);
 
-        if (search_for_ec)
-            it87_find_ec(register_port, value_port, type, ec_base);
+        if (search_for_mmio)
+            it87_find_mmio(register_port, value_port, type, mmio_base);
 
         it87_exit(register_port, value_port);
         return;
@@ -169,6 +218,7 @@ detect_chip(register_port, value_port, &type, search_for_ec, &ec_base) {
     if (chip_id != 0x00 && chip_id != 0xff) {
         // it's Smsc!
         type = (Vendor_Smsc << 32) | (chip_id << 8) | (chip_revision);
+        find_bars(register_port, value_port);
         smsc_exit(register_port);
         return;
     }
@@ -184,8 +234,9 @@ public ioctl_detect(in[], in_size, out[], out_size) {
     if (out_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
+    g_bars_count = 0;
     for (new i = 0; i < 2; ++i) {
-        detect_chip(CHIP_REGISTER_PORT[i], CHIP_VALUE_PORT[i], g_chip_type[i], in[i] != 0, g_chip_ec_base[i]);
+        detect_chip(CHIP_REGISTER_PORT[i], CHIP_VALUE_PORT[i], g_chip_type[i], in[i] != 0, g_chip_mmio_base[i]);
         out[i] = g_chip_type[i];
     }
 
@@ -285,8 +336,8 @@ public ioctl_exit(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_ec_read(in[], in_size, out[], out_size);
-public ioctl_ec_read(in[], in_size, out[], out_size) {
+forward ioctl_mmio_read(in[], in_size, out[], out_size);
+public ioctl_mmio_read(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -299,10 +350,10 @@ public ioctl_ec_read(in[], in_size, out[], out_size) {
     if (idx < 0 || idx > 1 || offset < 0 || offset > PAGE_SIZE || size < 0 || size > 8 || offset + size > PAGE_SIZE)
         return STATUS_INVALID_PARAMETER;
 
-    if (g_chip_ec_base[idx] == 0)
+    if (g_chip_mmio_base[idx] == 0)
         return STATUS_DEVICE_NOT_READY;
 
-    new va = io_space_map(g_chip_ec_base[idx], PAGE_SIZE);
+    new va = io_space_map(g_chip_mmio_base[idx], PAGE_SIZE);
     if (!va)
         return STATUS_NO_MEMORY;
 
@@ -329,8 +380,8 @@ public ioctl_ec_read(in[], in_size, out[], out_size) {
     return status;
 }
 
-forward ioctl_ec_write(in[], in_size, out[], out_size);
-public ioctl_ec_write(in[], in_size, out[], out_size) {
+forward ioctl_mmio_write(in[], in_size, out[], out_size);
+public ioctl_mmio_write(in[], in_size, out[], out_size) {
     if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -342,10 +393,10 @@ public ioctl_ec_write(in[], in_size, out[], out_size) {
     if (idx < 0 || idx > 1 || offset < 0 || offset > PAGE_SIZE || size < 0 || size > 8 || offset + size > PAGE_SIZE)
         return STATUS_INVALID_PARAMETER;
 
-    if (g_chip_ec_base[idx] == 0)
+    if (g_chip_mmio_base[idx] == 0)
         return STATUS_DEVICE_NOT_READY;
 
-    new va = io_space_map(g_chip_ec_base[idx], PAGE_SIZE);
+    new va = io_space_map(g_chip_mmio_base[idx], PAGE_SIZE);
     if (!va)
         return STATUS_NO_MEMORY;
 
@@ -367,6 +418,50 @@ public ioctl_ec_write(in[], in_size, out[], out_size) {
     io_space_unmap(va, size);
 
     return status;
+}
+
+is_port_allowed(port) {
+    // we assume that each BAR is a range of 8 bytes at most
+    new port_clamped = port & 0xFFF8;
+    new valid = false;
+    for (new i = 0; i < g_bars_count; i++) {
+        if (port_clamped == g_bars[i]) {
+            valid = true;
+            break;
+        }
+    }
+    return valid;
+}
+
+forward ioctl_pio_read(in[], in_size, out[], out_size);
+public ioctl_pio_read(in[], in_size, out[], out_size) {
+    if (in_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+    if (out_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new port = in[0] & 0xFFFF;
+
+    if (!is_port_allowed(port))
+        return STATUS_ACCESS_DENIED;
+
+    out[0] = io_in_byte(port);
+    return STATUS_SUCCESS;
+}
+
+forward ioctl_pio_write(in[], in_size, out[], out_size);
+public ioctl_pio_write(in[], in_size, out[], out_size) {
+    if (in_size < 2)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new port = in[0] & 0xFFFF;
+    new value = in[1];
+
+    if (!is_port_allowed(port))
+        return STATUS_ACCESS_DENIED;
+
+    io_out_byte(port, value);
+    return STATUS_SUCCESS;
 }
 
 main() {

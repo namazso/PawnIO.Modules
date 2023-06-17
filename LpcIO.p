@@ -372,13 +372,13 @@ public ioctl_mmio_read(in[], in_size, out[], out_size) {
 
     switch (size) {
         case 1:
-            status = virtual_read_byte(va + offset, value);
+            status = fix_status(virtual_read_byte(va + offset, value));
         case 2:
-            status = virtual_read_word(va + offset, value);
+            status = fix_status(virtual_read_word(va + offset, value));
         case 4:
-            status = virtual_read_dword(va + offset, value);
+            status = fix_status(virtual_read_dword(va + offset, value));
         case 8:
-            status = virtual_read_qword(va + offset, value);
+            status = fix_status(virtual_read_qword(va + offset, value));
         default:
             status = STATUS_INVALID_PARAMETER;
     }
@@ -416,13 +416,13 @@ public ioctl_mmio_write(in[], in_size, out[], out_size) {
 
     switch (size) {
         case 1:
-            status = virtual_write_byte(va + offset, value);
+            status = fix_status(virtual_write_byte(va + offset, value));
         case 2:
-            status = virtual_write_word(va + offset, value);
+            status = fix_status(virtual_write_word(va + offset, value));
         case 4:
-            status = virtual_write_dword(va + offset, value);
+            status = fix_status(virtual_write_dword(va + offset, value));
         case 8:
-            status = virtual_write_qword(va + offset, value);
+            status = fix_status(virtual_write_qword(va + offset, value));
         default:
             status = STATUS_INVALID_PARAMETER;
     }

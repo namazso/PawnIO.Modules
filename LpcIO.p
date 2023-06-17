@@ -31,15 +31,10 @@ const BASE_ADDRESS_REGISTER = 0x60;
 const BASE_ADDRESS_REGISTER_2 = 0x62;
 
 const DEVICE_SELECT_REGISTER = 0x07;
-const IT87XX_SMFI_LDN = 0x0F;
-const IT87_SMFI_HLPC_RAM_BAR = 0xF5;
-const IT87_SMFI_HLPC_RAM_BAR_HIGH = 0xFC;
-const IT87_LD_ACTIVE_REGISTER = 0x30;
 
 new g_register_port;
 new g_value_port;
 new g_type;
-new g_mmio_base;
 new g_bars[128];
 new g_bars_count = 0;
 
@@ -47,7 +42,6 @@ reset() {
     g_register_port = 0;
     g_value_port = 0;
     g_type = 0;
-    g_mmio_base = 0;
     g_bars_count = 0;
 }
 
@@ -109,47 +103,6 @@ smsc_exit() {
     io_out_byte(g_register_port, 0xaa);
 }
 
-it87_find_mmio() {
-    g_mmio_base = 0;
-
-    if (g_register_port != 0x4e)
-        return false;
-
-    // Check if the SMFI logical device is enabled
-
-    select(IT87XX_SMFI_LDN);
-    new enabled = read_byte(IT87_LD_ACTIVE_REGISTER);
-    microsleep(1000);
-    new enabled_v = read_byte(IT87_LD_ACTIVE_REGISTER);
-
-    if (enabled != enabled_v || !enabled)
-        return false;
-
-    new word = read_word(IT87_SMFI_HLPC_RAM_BAR);
-    new high = read_byte(IT87_SMFI_HLPC_RAM_BAR_HIGH);
-
-    microsleep(1000);
-
-    new word_v = read_word(IT87_SMFI_HLPC_RAM_BAR);
-    new high_v = read_byte(IT87_SMFI_HLPC_RAM_BAR_HIGH);
-
-    if (word_v != word_v)
-        return false;
-
-    if ((g_type & 0xFFFF) == 0x8695) {
-        // IT87952E
-
-        if (high != high_v)
-            return false;
-
-        g_mmio_base = 0xFC000000 | (word & 0xF000) | ((word & 0xFF) << 16) | ((high & 0xF) << 24);
-    } else {
-        g_mmio_base = 0xFF000000 | (word & 0xF000) | ((word & 0xFF) << 16);
-    }
-
-    return true;
-}
-
 check_bar(val, val_v) {
     if (val == val_v && val != 0 && val != 0xFFFF) {
         // in fixed range, probably some garbage
@@ -190,7 +143,7 @@ find_bars() {
     }
 }
 
-detect_chip(search_for_mmio) {
+detect_chip() {
     new chip_id, chip_revision;
 
     // ========= Winbond / Nuvoton / Fintek
@@ -220,9 +173,6 @@ detect_chip(search_for_mmio) {
         g_type = (Vendor_IT87 << 32) | (chip_id << 8) | (chip_revision);
         find_bars();
 
-        if (search_for_mmio)
-            it87_find_mmio();
-
         it87_exit();
         return;
     }
@@ -247,7 +197,7 @@ detect_chip(search_for_mmio) {
 
 forward ioctl_detect(in[], in_size, out[], out_size);
 public ioctl_detect(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 2)
+    if (in_size < IOCTL_IN_OFFSET + 1)
         return STATUS_BUFFER_TOO_SMALL;
 
     if (out_size < 1)
@@ -256,9 +206,8 @@ public ioctl_detect(in[], in_size, out[], out_size) {
     reset();
 
     new slot = in[IOCTL_IN_OFFSET + 0];
-    new should_scan_for_mmio = in[IOCTL_IN_OFFSET + 1];
 
-    debug_print(''LpcIO: Scanning slot %d. Scanning for mmio: %d\n'', slot, should_scan_for_mmio);
+    debug_print(''LpcIO: Scanning slot %d\n'', slot);
 
     if (slot == 0) {
         g_register_port = 0x2e;
@@ -270,7 +219,7 @@ public ioctl_detect(in[], in_size, out[], out_size) {
         return STATUS_INVALID_PARAMETER;
     }
 
-    detect_chip(should_scan_for_mmio != 0);
+    detect_chip();
 
     out[0] = g_type;
 
@@ -346,94 +295,6 @@ public ioctl_exit(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_mmio_read(in[], in_size, out[], out_size);
-public ioctl_mmio_read(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new offset = in[IOCTL_IN_OFFSET + 0];
-    new size = in[IOCTL_IN_OFFSET + 1];
-
-    if (!is_ready())
-        return STATUS_DEVICE_NOT_READY;
-
-    if (offset < 0 || offset > PAGE_SIZE || size < 0 || size > 8 || offset + size > PAGE_SIZE)
-        return STATUS_INVALID_PARAMETER;
-
-    if (g_mmio_base == 0)
-        return STATUS_DEVICE_NOT_READY;
-
-    new va = io_space_map(g_mmio_base, PAGE_SIZE);
-    if (!va)
-        return STATUS_NO_MEMORY;
-
-    new status = STATUS_SUCCESS;
-    new value;
-
-    switch (size) {
-        case 1:
-            status = fix_status(virtual_read_byte(va + offset, value));
-        case 2:
-            status = fix_status(virtual_read_word(va + offset, value));
-        case 4:
-            status = fix_status(virtual_read_dword(va + offset, value));
-        case 8:
-            status = fix_status(virtual_read_qword(va + offset, value));
-        default:
-            status = STATUS_INVALID_PARAMETER;
-    }
-
-    io_space_unmap(va, size);
-
-    out[0] = value;
-
-    return status;
-}
-
-forward ioctl_mmio_write(in[], in_size, out[], out_size);
-public ioctl_mmio_write(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 3)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new offset = in[IOCTL_IN_OFFSET + 0];
-    new size = in[IOCTL_IN_OFFSET + 1];
-    new value = in[IOCTL_IN_OFFSET + 2];
-
-    if (!is_ready())
-        return STATUS_DEVICE_NOT_READY;
-
-    if (offset < 0 || offset > PAGE_SIZE || size < 0 || size > 8 || offset + size > PAGE_SIZE)
-        return STATUS_INVALID_PARAMETER;
-
-    if (g_mmio_base == 0)
-        return STATUS_DEVICE_NOT_READY;
-
-    new va = io_space_map(g_mmio_base, PAGE_SIZE);
-    if (!va)
-        return STATUS_NO_MEMORY;
-
-    new status = STATUS_SUCCESS;
-
-    switch (size) {
-        case 1:
-            status = fix_status(virtual_write_byte(va + offset, value));
-        case 2:
-            status = fix_status(virtual_write_word(va + offset, value));
-        case 4:
-            status = fix_status(virtual_write_dword(va + offset, value));
-        case 8:
-            status = fix_status(virtual_write_qword(va + offset, value));
-        default:
-            status = STATUS_INVALID_PARAMETER;
-    }
-
-    io_space_unmap(va, size);
-
-    return status;
-}
-
 is_port_allowed(port) {
     if (port == g_register_port || port == g_value_port)
         return true;
@@ -487,7 +348,167 @@ public ioctl_pio_write(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
+it87_find_mmio() {
+    if (g_register_port != 0x4e)
+        return 0;
+
+    new base = 0;
+
+    const IT87XX_SMFI_LDN = 0x0F;
+    const IT87_SMFI_HLPC_RAM_BAR = 0xF5;
+    const IT87_SMFI_HLPC_RAM_BAR_HIGH = 0xFC;
+    const IT87_LD_ACTIVE_REGISTER = 0x30;
+
+    // Check if the SMFI logical device is enabled
+
+    select(IT87XX_SMFI_LDN);
+    new enabled = read_byte(IT87_LD_ACTIVE_REGISTER);
+    microsleep(1000);
+    new enabled_v = read_byte(IT87_LD_ACTIVE_REGISTER);
+
+    if (enabled != enabled_v || !enabled)
+        return 0;
+
+    new word = read_word(IT87_SMFI_HLPC_RAM_BAR);
+    new high = read_byte(IT87_SMFI_HLPC_RAM_BAR_HIGH);
+
+    microsleep(1000);
+
+    new word_v = read_word(IT87_SMFI_HLPC_RAM_BAR);
+    new high_v = read_byte(IT87_SMFI_HLPC_RAM_BAR_HIGH);
+
+    if (word_v != word_v)
+        return 0;
+
+    if ((g_type & 0xFFFF) == 0x8695) {
+        // IT87952E
+
+        if (high != high_v)
+            return 0;
+
+        base = 0xFC000000 | (word & 0xF000) | ((word & 0xFF) << 16) | ((high & 0xF) << 24);
+    } else {
+        base = 0xFF000000 | (word & 0xF000) | ((word & 0xFF) << 16);
+    }
+
+    return base;
+}
+
+set_gigabyte_controller(enable, &old) {
+    old = 0;
+
+    if ((g_type >> 32) != Vendor_IT87)
+        return STATUS_NOT_SUPPORTED;
+
+    new vendor[4];
+    cpuid(0, 0, vendor);
+    if (!is_amd(vendor))
+        return STATUS_NOT_SUPPORTED;
+
+    new didvid;
+    // see D14F3x https://www.amd.com/system/files/TechDocs/55072_AMD_Family_15h_Models_70h-7Fh_BKDG.pdf
+    new status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, 0, didvid));
+    if (!NT_SUCCESS(status))
+        return status;
+
+    // make sure it's some AMD device at least
+    if ((didvid & 0xFFFF) != 0x1022)
+        return STATUS_NOT_SUPPORTED;
+
+    // this code should be running in already entered state, but we enter again just to make sure
+    it87_enter();
+
+    new base = it87_find_mmio();
+
+    if (!base)
+        return STATUS_NOT_FOUND;
+
+    const ioOrMemoryPortDecodeEnableReg = 0x48;
+    const memoryRangePortEnableMask = 0x1 << 5;
+    const pciLpcTargetCyclesPtrRegister = 0x60;
+    const romAddressRange2Register = 0x6C;
+    const ControllerEnableRegister = 0x47;
+    const ControllerFanControlArea = 0x900;
+
+    new pciAddressStart = base >> 0x10;
+    new pciAddressEnd = pciAddressStart + 1;
+
+    new enabledPciMemoryAddressRegister = pciAddressEnd << 0x10 | pciAddressStart;
+    new enabledRomAddressRegister = 0xFFFF << 0x10 | pciAddressEnd;
+
+    new origDecodeEnableRegister, origPciMemoryAddressRegister, origRomAddressRegister;
+
+    status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, ioOrMemoryPortDecodeEnableReg, origDecodeEnableRegister));
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, pciLpcTargetCyclesPtrRegister, origPciMemoryAddressRegister));
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, romAddressRange2Register, origRomAddressRegister));
+    if (!NT_SUCCESS(status))
+        return status;
+
+    new originalMmIoEnabled = (origDecodeEnableRegister & memoryRangePortEnableMask) != 0 &&
+                                origPciMemoryAddressRegister == enabledPciMemoryAddressRegister &&
+                                origRomAddressRegister == enabledRomAddressRegister;
+
+    // we start touching things here, be careful with error handling
+
+    if (!originalMmIoEnabled) {
+        pci_config_write_dword(0x0, 0x14, 0x3, ioOrMemoryPortDecodeEnableReg, origDecodeEnableRegister | memoryRangePortEnableMask);
+        pci_config_write_dword(0x0, 0x14, 0x3, pciLpcTargetCyclesPtrRegister, enabledPciMemoryAddressRegister);
+        pci_config_write_dword(0x0, 0x14, 0x3, romAddressRange2Register, enabledRomAddressRegister);
+    }
+
+    new va = io_space_map(base, PAGE_SIZE);
+    if (va) {
+        new controllerFanControlAddress = va + ControllerFanControlArea;
+        new controllerFanControlEnabled = controllerFanControlAddress + ControllerEnableRegister;
+
+        status = fix_status(virtual_read_byte(controllerFanControlEnabled, old));
+        if (NT_SUCCESS(status) && old != enable && enable != -1) {
+            status = fix_status(virtual_write_byte(controllerFanControlEnabled, enable));
+        }
+
+        io_space_unmap(base, PAGE_SIZE);
+    } else {
+        status = STATUS_NO_MEMORY;
+    }
+
+    if (!originalMmIoEnabled) {
+        pci_config_write_dword(0x0, 0x14, 0x3, ioOrMemoryPortDecodeEnableReg, origDecodeEnableRegister);
+        pci_config_write_dword(0x0, 0x14, 0x3, pciLpcTargetCyclesPtrRegister, origPciMemoryAddressRegister);
+        pci_config_write_dword(0x0, 0x14, 0x3, romAddressRange2Register, origRomAddressRegister);
+    }
+
+    return status;
+}
+
+forward ioctl_set_gigabyte_controller(in[], in_size, out[], out_size);
+public ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
+    if (in_size < IOCTL_IN_OFFSET + 1)
+        return STATUS_BUFFER_TOO_SMALL;
+    if (out_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new value = in[IOCTL_IN_OFFSET + 0];
+
+    if (!is_ready())
+        return STATUS_DEVICE_NOT_READY;
+
+    if (value != -1 && value != 0 && value != 1)
+        return STATUS_INVALID_PARAMETER;
+
+    new old = 0;
+    new status = set_gigabyte_controller(value, old);
+
+    out[0] = old;
+
+    return status;
+}
+
 main() {
     return STATUS_SUCCESS;
 }
-

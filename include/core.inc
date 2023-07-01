@@ -32,5 +32,3 @@ stock _max(a, b) {
 
 #define PAGE_SIZE (0x1000)
 
-#define IOCTL_IN_OFFSET (4)
-

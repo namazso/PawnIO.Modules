@@ -133,17 +133,17 @@ const SMU_REQ_MAX_ARGS = 6;
 const SMU_RETRIES_MAX = 8096;
 
 read_reg(addr, &data) {
-    new status = fix_status(pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr));
+    new status = pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr);
     if (NT_SUCCESS(status)) {
-        status = fix_status(pci_config_read_dword(0, 0, 0, SMU_PCI_DATA_REG, data));
+        status = pci_config_read_dword(0, 0, 0, SMU_PCI_DATA_REG, data);
     }
     return status;
 }
 
 write_reg(addr, data) {
-    new status = fix_status(pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr));
+    new status = pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr);
     if (NT_SUCCESS(status)) {
-        status = fix_status(pci_config_write_dword(0, 0, 0, SMU_PCI_DATA_REG, data));
+        status = pci_config_write_dword(0, 0, 0, SMU_PCI_DATA_REG, data);
     }
     return status;
 }
@@ -401,7 +401,7 @@ public ioctl_read_pm_table(in[], in_size, out[], out_size) {
     if (va) {
         new read;
         for (new i = 0; i < read_count; ++i) {
-            status = fix_status(virtual_read_qword(va + i * 8, read));
+            status = virtual_read_qword(va + i * 8, read);
             if (!NT_SUCCESS(status))
                 break;
             out[i] = read;
@@ -469,7 +469,7 @@ main() {
         return STATUS_NOT_SUPPORTED;
 
     new didvid;
-    new status = fix_status(pci_config_read_dword(0, 0, 0, 0, didvid));
+    new status = pci_config_read_dword(0, 0, 0, 0, didvid);
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 

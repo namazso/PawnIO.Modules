@@ -201,7 +201,7 @@ detect_chip() {
 
 forward ioctl_detect(in[], in_size, out[], out_size);
 public ioctl_detect(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 1)
+    if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
     if (out_size < 1)
@@ -209,7 +209,7 @@ public ioctl_detect(in[], in_size, out[], out_size) {
 
     reset();
 
-    new slot = in[IOCTL_IN_OFFSET + 0];
+    new slot = in[0];
 
     debug_print(''LpcIO: Scanning slot %d\n'', slot);
 
@@ -232,12 +232,12 @@ public ioctl_detect(in[], in_size, out[], out_size) {
 
 forward ioctl_read(in[], in_size, out[], out_size);
 public ioctl_read(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 1)
+    if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new reg = in[IOCTL_IN_OFFSET + 0] & 0xFF;
+    new reg = in[0] & 0xFF;
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -248,11 +248,11 @@ public ioctl_read(in[], in_size, out[], out_size) {
 
 forward ioctl_write(in[], in_size, out[], out_size);
 public ioctl_write(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 2)
+    if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new reg = in[IOCTL_IN_OFFSET + 0] & 0xFF;
-    new val = in[IOCTL_IN_OFFSET + 1] & 0xFF;
+    new reg = in[0] & 0xFF;
+    new val = in[1] & 0xFF;
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -317,12 +317,12 @@ is_port_allowed(port) {
 
 forward ioctl_pio_read(in[], in_size, out[], out_size);
 public ioctl_pio_read(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 1)
+    if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new port = in[IOCTL_IN_OFFSET + 0] & 0xFFFF;
+    new port = in[0] & 0xFFFF;
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -336,11 +336,11 @@ public ioctl_pio_read(in[], in_size, out[], out_size) {
 
 forward ioctl_pio_write(in[], in_size, out[], out_size);
 public ioctl_pio_write(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 2)
+    if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new port = in[IOCTL_IN_OFFSET + 0] & 0xFFFF;
-    new value = in[IOCTL_IN_OFFSET + 1];
+    new port = in[0] & 0xFFFF;
+    new value = in[1];
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -409,7 +409,7 @@ set_gigabyte_controller(enable, &old) {
 
     new didvid;
     // see D14F3x https://www.amd.com/system/files/TechDocs/55072_AMD_Family_15h_Models_70h-7Fh_BKDG.pdf
-    new status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, 0, didvid));
+    new status = pci_config_read_dword(0x0, 0x14, 0x3, 0, didvid);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -435,15 +435,15 @@ set_gigabyte_controller(enable, &old) {
 
     new origDecodeEnableRegister, origPciMemoryAddressRegister, origRomAddressRegister;
 
-    status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, ioOrMemoryPortDecodeEnableReg, origDecodeEnableRegister));
+    status = pci_config_read_dword(0x0, 0x14, 0x3, ioOrMemoryPortDecodeEnableReg, origDecodeEnableRegister);
     if (!NT_SUCCESS(status))
         return status;
 
-    status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, pciLpcTargetCyclesPtrRegister, origPciMemoryAddressRegister));
+    status = pci_config_read_dword(0x0, 0x14, 0x3, pciLpcTargetCyclesPtrRegister, origPciMemoryAddressRegister);
     if (!NT_SUCCESS(status))
         return status;
 
-    status = fix_status(pci_config_read_dword(0x0, 0x14, 0x3, romAddressRange2Register, origRomAddressRegister));
+    status = pci_config_read_dword(0x0, 0x14, 0x3, romAddressRange2Register, origRomAddressRegister);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -464,9 +464,9 @@ set_gigabyte_controller(enable, &old) {
         new controllerFanControlAddress = va + ControllerFanControlArea;
         new controllerFanControlEnabled = controllerFanControlAddress + ControllerEnableRegister;
 
-        status = fix_status(virtual_read_byte(controllerFanControlEnabled, old));
+        status = virtual_read_byte(controllerFanControlEnabled, old);
         if (NT_SUCCESS(status) && old != enable && enable != -1) {
-            status = fix_status(virtual_write_byte(controllerFanControlEnabled, enable));
+            status = virtual_write_byte(controllerFanControlEnabled, enable);
         }
 
         io_space_unmap(va, PAGE_SIZE);
@@ -485,12 +485,12 @@ set_gigabyte_controller(enable, &old) {
 
 forward ioctl_set_gigabyte_controller(in[], in_size, out[], out_size);
 public ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
-    if (in_size < IOCTL_IN_OFFSET + 1)
+    if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new value = in[IOCTL_IN_OFFSET + 0];
+    new value = in[0];
 
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;

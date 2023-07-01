@@ -44,8 +44,8 @@ native physical_write_word(pa, value);
 native physical_write_dword(pa, value);
 native physical_write_qword(pa, value);
 
-//native io_space_map(pa, size);
-//native io_space_unmap(va, size);
+native io_space_map(pa, size);
+native io_space_unmap(va, size);
 
 native virtual_read_byte(va, &value);
 native virtual_read_word(va, &value);
@@ -78,7 +78,7 @@ native pci_config_write_qword(bus, device, function, offset, value);
 native get_proc_address(name[]);
 native invoke(address, &retval, a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0, a8=0, a9=0, a10=0, a11=0, a12=0, a13=0, a14=0, a15=0);
 
-//native microsleep(us);
+native microsleep(us);
 
 // order: eax ecx edx ebx esi edi
 native query_dell_smm(const in[6], out[6]);

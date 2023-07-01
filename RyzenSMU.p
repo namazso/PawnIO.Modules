@@ -36,7 +36,7 @@ const CodeName: {
     CPU_Milan,
     CPU_Dali,
     CPU_Raphael
-}
+};
 
 const SMUStatus: {
     SMU_Busy = 0x00,

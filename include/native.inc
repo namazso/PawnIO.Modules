@@ -15,14 +15,14 @@
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
-native debug_print(const fmt[], ...)
+native debug_print(const fmt[], ...);
 
 native get_arch();
 
 const {
     ARCH_X64 = 1,
     ARCH_A64 = 2
-}
+};
 
 native cpu_count();
 native cpu_set_affinity(which, old[2]);

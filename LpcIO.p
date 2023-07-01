@@ -22,7 +22,7 @@ const _: {
     Vendor_Winbond,
     Vendor_IT87,
     Vendor_Smsc
-}
+};
 
 const CHIP_ID_REGISTER = 0x20;
 const CHIP_REVISION_REGISTER = 0x21;

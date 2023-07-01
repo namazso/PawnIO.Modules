@@ -1,0 +1,28 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-normal",
+            "type": "shell",
+            "command": "pawncc.exe",
+            "args": [
+                "${file}",
+                "-iinclude",
+                "--%",
+                "-C64",
+                "-;+",
+                "-(+"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "isBackground": false,
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated"
+            },
+            "problemMatcher": "$pawncc"
+        }
+    ]
+}

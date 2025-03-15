@@ -42,6 +42,7 @@ bool:is_allowed_msr_read(msr) {
         default:
             return false;
     }
+    return false;
 }
 
 forward ioctl_read_msr(in[], in_size, out[], out_size);

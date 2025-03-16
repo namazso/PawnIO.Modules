@@ -366,6 +366,7 @@ get_pm_table_base(&base) {
 
 new g_table_base;
 
+/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_resolve_pm_table(in[], in_size, out[], out_size);
 public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
     if (out_size < 2)
@@ -389,6 +390,7 @@ public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
+/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_update_pm_table(in[], in_size, out[], out_size);
 public ioctl_update_pm_table(in[], in_size, out[], out_size) {
     return transfer_table_to_dram();
@@ -428,6 +430,7 @@ public ioctl_get_code_name(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
+/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_get_smu_version(in[], in_size, out[], out_size);
 public ioctl_get_smu_version(in[], in_size, out[], out_size) {
     if (out_size < 1)

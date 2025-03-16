@@ -35,7 +35,8 @@ const CodeName: {
     CPU_Cezanne,
     CPU_Milan,
     CPU_Dali,
-    CPU_Raphael
+    CPU_Raphael,
+    CPU_GraniteRidge
 };
 
 const SMUStatus: {
@@ -93,6 +94,8 @@ CodeName:get_code_name(family, model, pkg_type) {
             return CPU_Cezanne;
         case 0x1961:
             return CPU_Raphael;
+        case 0x1A44:
+            return CPU_GraniteRidge;
         default:
             return CPU_Undefined;
     }
@@ -125,6 +128,7 @@ new const k_addridx[] = [
     /* Milan         = */ -1,
     /* Dali          = */  2,
     /* Raphael       = */  0,
+    /* GraniteRidge  = */  0,
 ];
 
 const SMU_PCI_ADDR_REG = 0xC4;
@@ -238,7 +242,7 @@ get_pm_table_version(&version) {
             return send_command2(0x08, version);
         case CPU_Renoir:
             return send_command2(0x06, version);
-        case CPU_Raphael:
+        case CPU_Raphael, CPU_GraniteRidge:
             return send_command2(0x05, version);
         default:
             return STATUS_NOT_SUPPORTED;
@@ -249,7 +253,7 @@ get_pm_table_version(&version) {
 transfer_table_to_dram() {
     new three = 3;
     switch (g_code_name) {
-        case CPU_Raphael:
+        case CPU_Raphael, CPU_GraniteRidge:
             return send_command2(0x03);
         case CPU_Matisse, CPU_Vermeer:
             return send_command2(0x05);
@@ -268,7 +272,7 @@ get_pm_table_base(&base) {
     new class;
     new fn[3];
     switch (g_code_name) {
-        case CPU_Raphael: {
+        case CPU_Raphael, CPU_GraniteRidge: {
             fn[0] = 0x04;
             class = 1;
         }

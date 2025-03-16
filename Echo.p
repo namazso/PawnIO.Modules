@@ -32,11 +32,10 @@ public ioctl_not(in[], in_size, out[], out_size) {
 }
 
 main() {
-    // I don't know why this is needed, probably some compiler or interpreter bug
-    if (get_arch() == 0)
-        return STATUS_UNSUCCESSFUL;
+    // Only calling one native in a module triggers some interpreter or compiler bug...
+    new arch = get_arch();
 
-    debug_print(''Echo module loaded!'');
+    debug_print(''Echo module loaded! Arch: %d'', arch);
     return STATUS_SUCCESS;
 }
 

@@ -507,5 +507,8 @@ public ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
 }
 
 main() {
+    if (get_arch() != ARCH_X64)
+        return STATUS_NOT_SUPPORTED;
+    
     return STATUS_SUCCESS;
 }

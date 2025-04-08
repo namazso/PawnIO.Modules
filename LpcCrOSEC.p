@@ -297,7 +297,7 @@ public ioctl_ec_readmem(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new offset = in[0];
+    new offset = in[0] & 0xFFFF;
 
     new result = ec_readmem_lpc(offset, out_size, out);
     return result;

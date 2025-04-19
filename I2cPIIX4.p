@@ -21,6 +21,8 @@
 // Many parts of this was copied from the Linux kernel codebase.
 // See https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/i2c/busses/i2c-piix4.c
 
+#define PCI_VENDOR_ID_AMD					0x1022
+#define PCI_DEVICE_ID_AMD_KERNCZ_SMBUS		0x790b
 
 /*
  * Data for SMBus Messages
@@ -70,8 +72,31 @@
 /* PIIX4 constants */
 #define PIIX4_BLOCK_DATA	0x14
 
-new allowed_ports[] = [0x0B00, 0x0B20];
+new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
+
+piix4_init()
+{
+    new status;
+
+    new dev_vid;
+    status = pci_config_read_word(0x0, 0x14, 0x0, 0x0, dev_vid)
+    if (!NT_SUCCESS(status))
+        return STATUS_NOT_SUPPORTED;
+
+    if ((dev_vid & 0xFFFF) != PCI_VENDOR_ID_AMD)
+        return STATUS_NOT_SUPPORTED;
+
+    new dev_did;
+    status = pci_config_read_word(0x0, 0x14, 0x0, 0x2, dev_did);
+    if (!NT_SUCCESS(status))
+        return STATUS_NOT_SUPPORTED;
+
+    if ((dev_did & 0xFFFF) != PCI_DEVICE_ID_AMD_KERNCZ_SMBUS)
+        return STATUS_NOT_SUPPORTED;
+
+    return STATUS_SUCCESS;
+}
 
 piix4_transaction()
 {
@@ -225,22 +250,23 @@ piix4_access(addr, read_write, command, size, in[], out[])
     return STATUS_SUCCESS;
 }
 
-/* Allows changing the SMBus base address. */
-// IN: [0] = address
-forward ioctl_piix4_init(in[], in_size, out[], out_size);
-public ioctl_piix4_init(in[], in_size, out[], out_size) {
+/* Allows changing between I2C ports on the chipset. */
+// IN: [0] = port
+forward ioctl_piix4_port(in[], in_size, out[], out_size);
+public ioctl_piix4_port(in[], in_size, out[], out_size) {
     if (in_size < 1) {
         piix4_smba = 0x0B00;
         return STATUS_SUCCESS;
     }
 
-    for (new i = 0; i < sizeof allowed_ports; i++) {
-        if (in[0] == allowed_ports[i]) {
-            piix4_smba = in[0];
-            return STATUS_SUCCESS;
-        }
+    switch (in[0]) {
+    case 0, 1:
+        piix4_smba = addresses[in[0]];
+    // TODO: Implement port 2, 3, and 4
+    default:
+        return STATUS_INVALID_PARAMETER;
     }
-    return STATUS_ACCESS_DENIED;
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -431,7 +457,7 @@ public ioctl_piix4_block_process_call(in[], in_size, out[], out_size) {
 
     if (data[0] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
-        
+
     for (new i = 0; i < data[0]; i++)
         data[i+1] = in[i+2];
 
@@ -439,5 +465,5 @@ public ioctl_piix4_block_process_call(in[], in_size, out[], out_size) {
 }
 
 main() {
-    return STATUS_SUCCESS;
+    return piix4_init();
 }

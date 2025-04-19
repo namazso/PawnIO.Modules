@@ -79,6 +79,7 @@ piix4_init()
 {
     new status;
 
+    // Check that a PCI device at 00:14.0 exists and is an AMD SMBus controller
     new dev_vid;
     status = pci_config_read_word(0x0, 0x14, 0x0, 0x0, dev_vid)
     if (!NT_SUCCESS(status))
@@ -93,6 +94,12 @@ piix4_init()
         return STATUS_NOT_SUPPORTED;
 
     if ((dev_did & 0xFFFF) != PCI_DEVICE_ID_AMD_KERNCZ_SMBUS)
+        return STATUS_NOT_SUPPORTED;
+
+    // I'm fairly certain at least one bit in the status register should be 0
+    // Especially since there's 3 reserved bits in the status register
+    // So if it is 0xFF we can assume the device is not present
+    if (io_in_byte(SMBHSTSTS) == 0xff)
         return STATUS_NOT_SUPPORTED;
 
     return STATUS_SUCCESS;

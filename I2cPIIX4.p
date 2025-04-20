@@ -55,6 +55,9 @@
 #define PIIX4_BYTE_DATA		0x08
 #define PIIX4_WORD_DATA		0x0C
 
+#define SB800_PIIX4_FCH_PM_ADDR			0xFED80300
+#define SB800_PIIX4_FCH_PM_SIZE			8
+
 /* PIIX4 SMBus address offsets */
 #define SMBHSTSTS	(0x00 + piix4_smba)
 #define SMBHSLVSTS	(0x01 + piix4_smba)
@@ -85,7 +88,7 @@ piix4_init()
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 
-    if ((dev_vid & 0xFFFF) != PCI_VENDOR_ID_AMD)
+    if (dev_vid != PCI_VENDOR_ID_AMD)
         return STATUS_NOT_SUPPORTED;
 
     new dev_did;
@@ -93,8 +96,53 @@ piix4_init()
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 
-    if ((dev_did & 0xFFFF) != PCI_DEVICE_ID_AMD_KERNCZ_SMBUS)
+    if (dev_did != PCI_DEVICE_ID_AMD_KERNCZ_SMBUS)
         return STATUS_NOT_SUPPORTED;
+
+    // The Linux kernel doesn't use MMIO on older chips, so neither will we.
+    new dev_rev;
+    status = pci_config_read_byte(0x0, 0x14, 0x0, 0x8, dev_rev);
+    if (!NT_SUCCESS(status))
+        return STATUS_NOT_SUPPORTED;
+
+    // This could potentially be lowered to 0x49, since MMIO looks to be supported,
+    // but it needs testing. Also Linux doesn't use MMIO below revision 0x51.
+    if (dev_rev < 0x51)
+        return STATUS_NOT_SUPPORTED;
+
+    // Map MMIO space
+    new addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
+    if (addr == 0) {
+        debug_print(''Failed to map MMIO space\n'');
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    // Check SMBus is enabled
+    new smba_en_lo;
+    status = virtual_read_byte(addr, smba_en_lo);
+    if (!NT_SUCCESS(status)) {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if (!(smba_en_lo & 0x10)) {
+        debug_print(''SMBus Host Controller not enabled!\n'');
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    // Check the SMBus IO Base is 0xB00
+    new smba_en_hi;
+    status = virtual_read_byte(addr + 1, smba_en_hi);
+    if (!NT_SUCCESS(status)) {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if ((smba_en_hi << 8) != addresses[0]) {
+        debug_print(''SMBus Host Controller address is not default! (0x%x)\n'', smba_en_hi << 8);
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    // Unmap MMIO space
+    io_space_unmap(addr, SB800_PIIX4_FCH_PM_SIZE);
 
     // I'm fairly certain at least one bit in the status register should be 0
     // Especially since there's 3 reserved bits in the status register

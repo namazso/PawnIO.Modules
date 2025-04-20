@@ -99,7 +99,7 @@ piix4_init()
     if (dev_did != PCI_DEVICE_ID_AMD_KERNCZ_SMBUS)
         return STATUS_NOT_SUPPORTED;
 
-    // The Linux kernel doesn't use MMIO on older chips, so neither will we.
+    // Check that the device supports MMIO
     new dev_rev;
     status = pci_config_read_byte(0x0, 0x14, 0x0, 0x8, dev_rev);
     if (!NT_SUCCESS(status))
@@ -121,28 +121,35 @@ piix4_init()
     new smba_en_lo;
     status = virtual_read_byte(addr, smba_en_lo);
     if (!NT_SUCCESS(status)) {
-        return STATUS_NOT_SUPPORTED;
+        status = STATUS_NOT_SUPPORTED;
+        goto unmap;
     }
 
     if (!(smba_en_lo & 0x10)) {
         debug_print(''SMBus Host Controller not enabled!\n'');
-        return STATUS_NOT_SUPPORTED;
+        status = STATUS_NOT_SUPPORTED;
+        goto unmap;
     }
 
     // Check the SMBus IO Base is 0xB00
     new smba_en_hi;
     status = virtual_read_byte(addr + 1, smba_en_hi);
     if (!NT_SUCCESS(status)) {
-        return STATUS_NOT_SUPPORTED;
+        status = STATUS_NOT_SUPPORTED;
+        goto unmap;
     }
 
     if ((smba_en_hi << 8) != addresses[0]) {
         debug_print(''SMBus Host Controller address is not default! (0x%x)\n'', smba_en_hi << 8);
-        return STATUS_NOT_IMPLEMENTED;
+        status = STATUS_NOT_IMPLEMENTED;
+        goto unmap;
     }
 
+unmap:
     // Unmap MMIO space
     io_space_unmap(addr, SB800_PIIX4_FCH_PM_SIZE);
+    if (status)
+        return status;
 
     // I'm fairly certain at least one bit in the status register should be 0
     // Especially since there's 3 reserved bits in the status register

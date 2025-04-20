@@ -55,6 +55,10 @@
 #define PIIX4_BYTE_DATA		0x08
 #define PIIX4_WORD_DATA		0x0C
 
+#define SB800_PIIX4_PORT_IDX_KERNCZ		0x02
+#define SB800_PIIX4_PORT_IDX_MASK_KERNCZ	0x18
+#define SB800_PIIX4_PORT_IDX_SHIFT_KERNCZ	3
+
 #define SB800_PIIX4_FCH_PM_ADDR			0xFED80300
 #define SB800_PIIX4_FCH_PM_SIZE			8
 
@@ -312,22 +316,90 @@ piix4_access(addr, read_write, command, size, in[], out[])
     return STATUS_SUCCESS;
 }
 
-/* Allows changing between I2C ports on the chipset. */
-// IN: [0] = port
-forward ioctl_piix4_port(in[], in_size, out[], out_size);
-public ioctl_piix4_port(in[], in_size, out[], out_size) {
-    if (in_size < 1) {
-        piix4_smba = 0x0B00;
-        return STATUS_SUCCESS;
+piix4_port_sel(port, &old_port)
+{
+    new status = STATUS_SUCCESS;
+
+    new port_to_reg[] = [0b00, 0b00, 0b01, 0b10, 0b11];
+    new reg_to_port[] = [0, 2, 3, 4]
+
+    // Map MMIO space
+    new addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
+    if (addr == 0) {
+        debug_print(''Failed to map MMIO space\n'');
+        return STATUS_IO_DEVICE_ERROR;
+    }
+    
+    // Read the current port
+    new smba_en_lo;
+    status = virtual_read_byte(addr + SB800_PIIX4_PORT_IDX_KERNCZ, smba_en_lo);
+    if (!NT_SUCCESS(status)) {
+        debug_print(''Failed to read port %d\n'', port);
+        status = STATUS_IO_DEVICE_ERROR;
+        goto unmap;
     }
 
-    switch (in[0]) {
-    case 0, 1:
-        piix4_smba = addresses[in[0]];
-    // TODO: Implement port 2, 3, and 4
-    default:
-        return STATUS_INVALID_PARAMETER;
+    new reg = (smba_en_lo & SB800_PIIX4_PORT_IDX_MASK_KERNCZ) >> SB800_PIIX4_PORT_IDX_SHIFT_KERNCZ;
+    old_port = reg_to_port[reg];
+    // Return the current port if the given port is -1
+    if (port == -1)
+        goto unmap;
+
+    new new_port = port_to_reg[port];
+
+    // Set the new port
+    new val = (smba_en_lo & ~SB800_PIIX4_PORT_IDX_MASK_KERNCZ) | (new_port << SB800_PIIX4_PORT_IDX_SHIFT_KERNCZ);
+    if (val != smba_en_lo) {
+        status = virtual_write_byte(addr + SB800_PIIX4_PORT_IDX_KERNCZ, val);
+        if (!NT_SUCCESS(status)) {
+            debug_print(''Failed to set port %d\n'', port);
+            status = STATUS_IO_DEVICE_ERROR;
+            goto unmap;
+        }
     }
+
+unmap:
+    // Unmap MMIO space
+    io_space_unmap(addr, SB800_PIIX4_FCH_PM_SIZE);
+    return status;
+}
+
+/* Allows changing between I2C ports on the chipset. */
+// IN: [0] = port (optional)
+// OUT: [0] = previous port
+forward ioctl_piix4_port_sel(in[], in_size, out[], out_size);
+public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
+    if (out_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new old_addr = piix4_smba;
+    new old_port = 0;
+
+    if (in_size >= 1)
+    {
+        switch (in[0]) {
+        case 0, 2, 3, 4:
+            {
+                piix4_smba = addresses[0];
+                piix4_port_sel(in[0], old_port);
+            }
+        case 1:
+            // Port 1 is the aux port, we just change the base address
+            piix4_smba = addresses[1];
+        default:
+            return STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    if (old_addr == addresses[1])
+        out[0] = 1;
+    else
+    {
+        if (in_size < 1)
+            old_port = piix4_port_sel(-1, old_port);
+        out[0] = old_port;
+    }
+
     return STATUS_SUCCESS;
 }
 

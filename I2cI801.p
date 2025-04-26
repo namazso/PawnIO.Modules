@@ -211,10 +211,6 @@ new pci_devices[] = [
 new pci_addr[3];
 new i801_smba;
 
-// Whether hardware PEC/CRC is supported
-// TODO: HWPEC doesn't actually work
-new bool:hwpec = false;
-
 i801_init()
 {
     new status;
@@ -275,27 +271,11 @@ i801_get_block_len()
     return len;
 }
 
-i801_check_and_clear_pec_error()
-{
-    new status;
-
-    if (!hwpec)
-    	return 0;
-
-    status = io_in_byte(SMBAUXSTS) & SMBAUXSTS_CRCE;
-    if (status) {
-        io_out_byte(SMBAUXSTS, status);
-        return STATUS_CRC_ERROR;
-    }
-
-    return STATUS_SUCCESS;
-}
-
 /* Make sure the SMBus host is ready to start transmitting.
    Return 0 if it is, -EBUSY if it is not. */
 i801_check_pre()
 {
-    new status, result;
+    new status;
 
     status = io_in_byte(SMBHSTSTS);
     if (status & SMBHSTSTS_HOST_BUSY) {
@@ -308,17 +288,6 @@ i801_check_pre()
         debug_print(''Clearing status flags (%x)\n'', status);
         io_out_byte(SMBHSTSTS, status);
     }
-
-    /*
-     * Clear CRC status if needed.
-     * During normal operation, i801_check_post() takes care
-     * of it after every operation.  We do it here only in case
-     * the hardware was already in this state when the driver
-     * started.
-     */
-    result = i801_check_and_clear_pec_error();
-    if (result)
-        debug_print(''Clearing aux status flag CRCE\n'');
 
     return 0;
 }
@@ -349,28 +318,8 @@ i801_check_post(status)
         debug_print(''Transaction failed\n'');
     }
     if (status & SMBHSTSTS_DEV_ERR) {
-        /*
-         * This may be a PEC error, check and clear it.
-         *
-         * AUXSTS is handled differently from HSTSTS.
-         * For HSTSTS, i801_isr() or i801_wait_intr()
-         * has already cleared the error bits in hardware,
-         * and we are passed a copy of the original value
-         * in "status".
-         * For AUXSTS, the hardware register is left
-         * for us to handle here.
-         * This is asymmetric, slightly iffy, but safe,
-         * since all this code is serialized and the CRCE
-         * bit is harmless as long as it's cleared before
-         * the next operation.
-         */
-        result = i801_check_and_clear_pec_error();
-        if (result) {
-            debug_print(''PEC error\n'');
-        } else {
-            result = STATUS_NO_SUCH_DEVICE;
-            debug_print(''No response\n'');
-        }
+        result = STATUS_NO_SUCH_DEVICE;
+        debug_print(''No response\n'');
     }
     if (status & SMBHSTSTS_BUS_ERR) {
         result = STATUS_RETRY;
@@ -594,10 +543,7 @@ i801_access(addr, read_write, command, size, in[], out[])
     if (ret)
         goto unlock;
 
-    if (hwpec)	/* enable/disable hardware PEC */
-        io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) | SMBAUXCTL_CRC);
-    else
-        io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & (~SMBAUXCTL_CRC));
+    io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & (~SMBAUXCTL_CRC));
 
     switch (size) {
         case I2C_SMBUS_BLOCK_DATA, I2C_SMBUS_BLOCK_PROC_CALL:
@@ -611,11 +557,6 @@ i801_access(addr, read_write, command, size, in[], out[])
 
     ret = i801_check_post(ret);
 
-    /* Some BIOSes don't like it when PEC is enabled at reboot or resume
-     * time, so we forcibly disable it after every transaction.
-     */
-    if (hwpec)
-        io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & ~SMBAUXCTL_CRC);
 unlock:
     i801_inuse(false);
 

@@ -152,7 +152,7 @@ piix4_init()
 unmap:
     // Unmap MMIO space
     io_space_unmap(addr, SB800_PIIX4_FCH_PM_SIZE);
-    if (status)
+    if (!NT_SUCCESS(status))
         return status;
 
     // I'm fairly certain at least one bit in the status register should be 0
@@ -167,7 +167,7 @@ unmap:
 piix4_transaction()
 {
     new temp;
-    new result = STATUS_SUCCESS;
+    new status = STATUS_SUCCESS;
     new timeout = 0;
 
     /* Make sure the SMBus host is ready to start transmitting */
@@ -194,22 +194,22 @@ piix4_transaction()
     /* If the SMBus is still busy, we give up */
     if (timeout == MAX_TIMEOUT) {
         debug_print(''SMBus Timeout!\n'');
-        result = STATUS_IO_TIMEOUT;
+        status = STATUS_IO_TIMEOUT;
     }
 
     if (temp & 0x10) {
-        result = STATUS_IO_DEVICE_ERROR;
+        status = STATUS_IO_DEVICE_ERROR;
         debug_print(''Error: Failed bus transaction\n'');
     }
 
     if (temp & 0x08) {
-        result = STATUS_IO_DEVICE_ERROR;
+        status = STATUS_IO_DEVICE_ERROR;
         debug_print(''Bus collision! SMBus may be locked until next hard reset. (sorry!)\n'');
         /* Clock stops and target is stuck in mid-transmission */
     }
 
     if (temp & 0x04) {
-        result = STATUS_NO_SUCH_DEVICE;
+        status = STATUS_NO_SUCH_DEVICE;
         debug_print(''Error: no response!\n'');
     }
 
@@ -222,13 +222,12 @@ piix4_transaction()
     // debug_print(''Transaction (post): CNT=%x, CMD=%x, ADD=%x, DAT0=%x, DAT1=%x\n'',
     //             io_in_byte(SMBHSTCNT), io_in_byte(SMBHSTCMD), io_in_byte(SMBHSTADD),
     //             io_in_byte(SMBHSTDAT0), io_in_byte(SMBHSTDAT1));
-    return result;
+    return status;
 }
 
 piix4_access(addr, read_write, command, size, in[], out[])
 {
-    new i;
-    new len;
+    new i, len;
     new status;
 
     switch (size) {
@@ -292,7 +291,7 @@ piix4_access(addr, read_write, command, size, in[], out[])
     io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
 
     status = piix4_transaction();
-    if (status)
+    if (!NT_SUCCESS(status))
         return status;
 
     if ((read_write == I2C_SMBUS_WRITE) || (size == PIIX4_QUICK))

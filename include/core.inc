@@ -32,3 +32,4 @@ stock _max(a, b) {
 
 #define PAGE_SIZE (0x1000)
 
+#define BIT(%1) (1 << (%1))

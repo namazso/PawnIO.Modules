@@ -130,7 +130,6 @@ new pci_addresses[4][3] = [
     // These are also secondary addresses, which aren't handled by this driver
     [0x00, 0x11, 0x1],
     [0x00, 0x11, 0x3],
-    [0x00, 0x13, 0x0],
     [0x03, 0x00, 0x3],
     [0x03, 0x00, 0x4], */
 ];
@@ -157,18 +156,18 @@ new pci_devices[] = [
     0x3b30,     // 5/3400 Series (PCH) - 00:1f.3
     0x1c22,     // 6 Series (PCH) - 00:1f.3
     0x1d22,     // Patsburg (PCH) - 00:1f.3
-    0x1d70,     // Patsburg (PCH) IDF - 00:1f.3
-    0x1d71,     // Patsburg (PCH) IDF - 00:1f.3 & 03:00.3 & 03:00.4
-    0x1d72,     // Patsburg (PCH) IDF
+    // 0x1d70,     // Patsburg (PCH) IDF - 03:00.3
+    // 0x1d71,     // Patsburg (PCH) IDF - 03:00.4
+    // 0x1d72,     // Patsburg (PCH) IDF
     0x2330,     // DH89xxCC (PCH) - 00:1f.3
     0x1e22,     // Panther Point (PCH) - 00:1f.3
     0x8c22,     // Lynx Point (PCH) - 00:1f.3
-    0x9c22,     // Lynx Point-LP (PCH) - 00:1f.3 & 00:13.0
-    0x1f3c,     // Avoton (SOC) - 00:1f.3 & 00:13.0
+    0x9c22,     // Lynx Point-LP (PCH) - 00:1f.3
+    0x1f3c,     // Avoton (SOC) - 00:1f.3
     0x8d22,     // Wellsburg (PCH) - 00:1f.3
-    0x8d7d,     // Wellsburg (PCH) MS - 00:1f.3 & 00:11.1
-    0x8d7e,     // Wellsburg (PCH) MS
-    0x8d7f,     // Wellsburg (PCH) MS - 00:1f.3 & 00:11.3
+    // 0x8d7d,     // Wellsburg (PCH) MS - 00:11.1
+    // 0x8d7e,     // Wellsburg (PCH) MS
+    // 0x8d7f,     // Wellsburg (PCH) MS - 00:11.3
     0x23b0,     // Coleto Creek (PCH) - 00:1f.3
     0x8ca2,     // Wildcat Point (PCH) - 00:1f.3
     0x9ca2,     // Wildcat Point-LP (PCH) - 00:1f.3
@@ -185,7 +184,7 @@ new pci_devices[] = [
     0x31d4,     // Gemini Lake (SOC) - 00:1f.1
     0xa323,     // Cannon Lake-H (PCH) - 00:1f.4
     0x9da3,     // Cannon Lake-LP (PCH) - 00:1f.4
-    0x18df,     // Cedar Fork (PCH) - 00:0f.0
+    // 0x18df,     // Cedar Fork (PCH) - 00:0f.0
     0x34a3,     // Ice Lake-LP (PCH) - 00:1f.4
     0x38a3,     // Ice Lake-N (PCH) - 00:1f.4
     0x02a3,     // Comet Lake (PCH) - 00:1f.4

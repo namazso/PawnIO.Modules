@@ -511,16 +511,18 @@ i801_inuse(bool:inuse)
 {
     if (inuse) {
         // Wait for device to be unlocked by BIOS/ACPI
-        // Linux doesn't do this, there might be a reason why
+        // Linux doesn't do this, since some BIOSes might not unlock it
         new retries = 0;
-        new is_inuse;
-        do {
+        new is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
+        while (is_inuse && (++retries < MAX_RETRIES)) {
             microsleep(250);
             is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
-        } while (is_inuse && (++retries < MAX_RETRIES));
+        }
         
-        if (retries >= MAX_RETRIES)
+        if (retries >= MAX_RETRIES) {
+            debug_print(''SMBus device is in use by BIOS/ACPI\n'');
             return STATUS_IO_TIMEOUT;
+        }
         return STATUS_SUCCESS;
     } else {
         /*

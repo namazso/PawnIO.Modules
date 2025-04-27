@@ -615,9 +615,8 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     new command = in[1];
 
     new unused;
-    new unused2;
 
-    return i801_access_simple(address, command, 0, I2C_SMBUS_QUICK, unused, unused2);
+    return i801_access_simple(address, command, 0, I2C_SMBUS_QUICK, 0, unused);
 }
 
 /*
@@ -637,9 +636,7 @@ public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
 
     new address = in[0];
 
-    new unused;
-
-    return i801_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, unused, out[0]);
+    return i801_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = data
@@ -652,9 +649,8 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     new data = in[1];
 
     new unused;
-    new unused2;
 
-    return i801_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, unused, unused2);
+    return i801_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, 0, unused);
 }
 
 /*
@@ -674,9 +670,7 @@ public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
     new address = in[0];
     new command = in[1];
 
-    new unused;
-
-    return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, unused, out[0]);
+    return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
@@ -711,9 +705,7 @@ public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
     new address = in[0];
     new command = in[1];
 
-    new unused;
-
-    return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, unused, out[0]);
+    return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = command, [2] = data

@@ -606,6 +606,7 @@ unlock:
  * (at offset 0) can be specified in the field definition.
  */
 // IN: [0] = address, [1] = command
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_quick(in[], in_size, out[], out_size);
 public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -627,6 +628,7 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_byte(in[], in_size, out[], out_size);
 public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
     if (in_size < 1)
@@ -640,6 +642,7 @@ public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
 }
 
 // IN: [0] = address, [1] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_byte(in[], in_size, out[], out_size);
 public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -660,6 +663,7 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_byte_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -674,6 +678,7 @@ public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
 }
 
 // IN: [0] = address, [1] = command, [2] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_byte_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -695,6 +700,7 @@ public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_word_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -709,6 +715,7 @@ public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
 }
 
 // IN: [0] = address, [1] = command, [2] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_word_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -730,6 +737,7 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command
 // OUT: [0] = length, [1..5] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -755,6 +763,7 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
 }
 
 // IN: [0] = address, [1] = command, [2] = length, [3..7] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 7)
@@ -783,6 +792,7 @@ public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command, [2] = data
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_process_call(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -808,6 +818,7 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command, [2] = length, [3..7] = data
 // OUT: [0] = length, [1..5] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_block_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     if (in_size < 7)

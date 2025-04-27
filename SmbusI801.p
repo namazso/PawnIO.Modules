@@ -384,7 +384,8 @@ i801_block_transaction_by_block(read_write, command, in[], out[], in_offset)
         io_out_byte(SMBHSTDAT0, len);
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)
-            io_out_byte(SMBBLKDAT, in[in_offset + i + 1]);
+            // Extract an 8bit value out of a 64bit cell
+            io_out_byte(SMBBLKDAT, (in[in_offset + (i / 8) + 1] >> (i % 8)) & 0xff);
     }
 
     ret = i801_transaction(xact);
@@ -402,7 +403,8 @@ i801_block_transaction_by_block(read_write, command, in[], out[], in_offset)
         out[0] = len;
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)
-            out[i + 1] = io_in_byte(SMBBLKDAT);
+            // Extract an 8bit value out of a 64bit cell
+            out[(i / 8) + 1] |= io_in_byte(SMBBLKDAT) << (i % 8);
     }
 cleanup:
     io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & ~SMBAUXCTL_E32B);
@@ -669,24 +671,27 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
  * block-sized virtual registers.
  */
 // IN: [0] = address, [1] = command
-// OUT: [0] = length, [1...] = data
+// OUT: [0] = length, [1...6] = data
 forward ioctl_i801_read_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
+    if (out_size < I2C_SMBUS_BLOCK_MAX + 1)
         return STATUS_BUFFER_TOO_SMALL;
 
     return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BLOCK_DATA, in, out);
 }
 
-// IN: [0] = address, [1] = command, [2] = length, [3...35] = data
+// IN: [0] = address, [1] = command, [2] = length, [3...6] = data
 forward ioctl_i801_write_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
 
-    if ((in_size - 2) != in[2] || in[2] > I2C_SMBUS_BLOCK_MAX)
+    if (in[2] > ((in_size - 3) * 8))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if (in[2] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
     return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_DATA, in, out, 2);
@@ -717,16 +722,19 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
  * data that may be transferred is limited to 32 bytes. This protocol uses a
  * command value to reference up to 256 block-sized virtual registers.
  */
-// IN: [0] = address, [1] = command, [2] = length, [3...35] = data
-// OUT: [0] = length, [1...] = data
+// IN: [0] = address, [1] = command, [2] = length, [3...6] = data
+// OUT: [0] = length, [1...4] = data
 forward ioctl_i801_block_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
+    if (out_size < I2C_SMBUS_BLOCK_MAX + 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    if ((in_size - 2) != in[2] || in[2] > I2C_SMBUS_BLOCK_MAX)
+    if (in[2] > ((in_size - 3) * 8))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if (in[2] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
     return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_PROC_CALL, in, out, 2);

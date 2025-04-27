@@ -363,7 +363,7 @@ i801_transaction(xact)
     return hststs;
 }
 
-i801_block_transaction_by_block(read_write, command, in[], out[], in_offset)
+i801_block_transaction_by_block(read_write, command, in[], out[])
 {
     new len, ret, xact;
 
@@ -380,11 +380,11 @@ i801_block_transaction_by_block(read_write, command, in[], out[], in_offset)
     io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) | SMBAUXCTL_E32B);
 
     if (read_write == I2C_SMBUS_WRITE) {
-        len = in[in_offset];
+        len = in[0];
         io_out_byte(SMBHSTDAT0, len);
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)
-            io_out_byte(SMBBLKDAT, in[in_offset + i + 1]);
+            io_out_byte(SMBBLKDAT, in[i+1]);
     }
 
     ret = i801_transaction(xact);
@@ -414,7 +414,7 @@ i801_set_hstadd(addr, read_write)
     io_out_byte(SMBHSTADD, ((addr & 0x7f) << 1) | (read_write & 0x01));
 }
 
-i801_simple_transaction(addr, hstcmd, read_write, command, in, out[])
+i801_simple_transaction(addr, hstcmd, read_write, command, in[], out[])
 {
     new xact, hststs;
 
@@ -435,7 +435,7 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, out[])
         {
             i801_set_hstadd(addr, read_write);
             if (read_write == I2C_SMBUS_WRITE)
-                io_out_byte(SMBHSTDAT0, in);
+                io_out_byte(SMBHSTDAT0, in[0]);
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE_DATA;
         }
@@ -443,8 +443,8 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, out[])
         {
             i801_set_hstadd(addr, read_write);
             if (read_write == I2C_SMBUS_WRITE) {
-                io_out_byte(SMBHSTDAT0, in & 0xff);
-                io_out_byte(SMBHSTDAT1, (in & 0xff00) >> 8);
+                io_out_byte(SMBHSTDAT0, in[0] & 0xff);
+                io_out_byte(SMBHSTDAT1, (in[0] & 0xff00) >> 8);
             }
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
@@ -452,8 +452,8 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, out[])
     case I2C_SMBUS_PROC_CALL:
         {
             i801_set_hstadd(addr, I2C_SMBUS_WRITE);
-            io_out_byte(SMBHSTDAT0, in & 0xff);
-            io_out_byte(SMBHSTDAT1, (in & 0xff00) >> 8);
+            io_out_byte(SMBHSTDAT0, in[0] & 0xff);
+            io_out_byte(SMBHSTDAT1, (in[0] & 0xff00) >> 8);
             io_out_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;
@@ -484,12 +484,12 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, out[])
     return 0;
 }
 
-i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[], out[], in_offset)
+i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[], out[])
 {
     if (read_write == I2C_SMBUS_READ && command == I2C_SMBUS_BLOCK_DATA)
         /* Mark block length as invalid */
         out[0] = SMBUS_LEN_SENTINEL;
-    else if (in[in_offset] < 1 || in[in_offset] > I2C_SMBUS_BLOCK_MAX)
+    else if (in[0] < 1 || in[0] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
     if (command == I2C_SMBUS_BLOCK_PROC_CALL)
@@ -503,7 +503,7 @@ i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[], out[], in_
     // 	return i801_block_transaction_by_block(data, read_write, command);
     // else
     // 	return i801_block_transaction_byte_by_byte(data, read_write, command);
-    return i801_block_transaction_by_block(read_write, command, in, out, in_offset);
+    return i801_block_transaction_by_block(read_write, command, in, out);
 }
 
 i801_inuse(bool:inuse)
@@ -531,7 +531,7 @@ i801_inuse(bool:inuse)
     }
 }
 
-i801_access(addr, read_write, command, size, in[], out[], in_offset = 0)
+i801_access(addr, read_write, command, size, in[], out[])
 {
     new status, hststs;
 
@@ -547,11 +547,11 @@ i801_access(addr, read_write, command, size, in[], out[], in_offset = 0)
 
     switch (size) {
         case I2C_SMBUS_BLOCK_DATA, I2C_SMBUS_BLOCK_PROC_CALL:
-            hststs = i801_smbus_block_transaction(addr, command, read_write, size, in, out, in_offset);
+            hststs = i801_smbus_block_transaction(addr, command, read_write, size, in, out);
         // case I2C_SMBUS_I2C_BLOCK_DATA:
-        //     hststs = i801_i2c_block_transaction(addr, command, read_write, size, in, in_offset, out);
+        //     hststs = i801_i2c_block_transaction(addr, command, read_write, size, in, out);
         case I2C_SMBUS_QUICK, I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
-            hststs = i801_simple_transaction(addr, command, read_write, size, in[in_offset], out);
+            hststs = i801_simple_transaction(addr, command, read_write, size, in, out);
         default:
             {
                 debug_print(''Unsupported transaction %d\n'', size);
@@ -581,7 +581,9 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], in[1], 0, I2C_SMBUS_QUICK, in, out);
+    new data[1];
+
+    return i801_access(in[0], in[1], 0, I2C_SMBUS_QUICK, data, out);
 }
 
 /*
@@ -599,7 +601,9 @@ public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, in, out);
+    new data[1];
+
+    return i801_access(in[0], I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, data, out);
 }
 
 // IN: [0] = address, [1] = data
@@ -608,7 +612,9 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE, in, out);
+    new data[1];
+
+    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE, data, out);
 }
 
 /*
@@ -625,7 +631,9 @@ public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BYTE_DATA, in, out);
+    new data[1];
+
+    return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BYTE_DATA, data, out);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
@@ -634,7 +642,10 @@ public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE_DATA, in, out, 2);
+    new data[1];
+    data[0] = in[2];
+
+    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE_DATA, data, out);
 }
 
 /*
@@ -651,7 +662,9 @@ public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_WORD_DATA, in, out);
+    new data[1];
+
+    return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_WORD_DATA, data, out);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
@@ -660,7 +673,10 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_WORD_DATA, in, out, 2);
+    new data[1];
+    data[0] = in[2];
+
+    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_WORD_DATA, data, out);
 }
 
 /*
@@ -677,19 +693,26 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BLOCK_DATA, in, out);
+    new data[1];
+    return i801_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BLOCK_DATA, data, out);
 }
 
-// IN: [0] = address, [1] = command, [2] = length, [3...35] = data
+// IN: [0] = address, [1] = command, [2...] = data
 forward ioctl_i801_write_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
-    if (in_size < 4)
+    if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    if ((in_size - 2) != in[2] || in[2] > I2C_SMBUS_BLOCK_MAX)
+    new data[I2C_SMBUS_BLOCK_MAX + 1];
+    data[0] = in_size - 2;
+
+    if (data[0] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
-    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_DATA, in, out, 2);
+    for (new i = 0; i < data[0]; i++)
+        data[i+1] = in[i+2];
+
+    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_DATA, data, out);
 }
 
 /*
@@ -707,7 +730,10 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_PROC_CALL, in, out, 2);
+    new data[1];
+    data[0] = in[2];
+
+    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_PROC_CALL, data, out);
 }
 
 /*
@@ -717,19 +743,25 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
  * data that may be transferred is limited to 32 bytes. This protocol uses a
  * command value to reference up to 256 block-sized virtual registers.
  */
-// IN: [0] = address, [1] = command, [2] = length, [3...35] = data
+// IN: [0] = address, [1] = command, [2...] = data
 // OUT: [0] = length, [1...] = data
 forward ioctl_i801_block_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
-    if (in_size < 4)
+    if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    if ((in_size - 2) != in[2] || in[2] > I2C_SMBUS_BLOCK_MAX)
+    new data[I2C_SMBUS_BLOCK_MAX + 1]
+    data[0] = in_size - 2;
+
+    if (data[0] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
-    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_PROC_CALL, in, out, 2);
+    for (new i = 0; i < data[0]; i++)
+        data[i+1] = in[i+2];
+
+    return i801_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_PROC_CALL, data, out);
 }
 
 main() {

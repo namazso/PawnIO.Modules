@@ -258,6 +258,28 @@ i801_init()
     return STATUS_SUCCESS;
 }
 
+// Consecutively writes up to 8 packed bytes of the specified value to the port
+io_out_bytes(port, count, bytes)
+{
+    while (true) {
+        io_out_byte(port, bytes & 0xFF);
+        if (--count == 0) break;
+        bytes >>>= 8;
+    }
+}
+
+// Consecutively reads up to 8 packed bytes from the port
+io_in_bytes(port, count)
+{
+    new bytes = 0;
+    while (true) {
+        bytes |= io_in_byte(port);
+        if (--count == 0) break;
+        bytes <<= 8;
+    }
+    return bytes;
+}
+
 i801_get_block_len()
 {
     new len = io_in_byte(SMBHSTDAT0);
@@ -363,7 +385,7 @@ i801_transaction(xact)
     return hststs;
 }
 
-i801_block_transaction_by_block(read_write, command, in[33], out[33])
+i801_block_transaction_by_block(read_write, command, in[], out[])
 {
     new len, ret, xact;
 
@@ -383,8 +405,15 @@ i801_block_transaction_by_block(read_write, command, in[33], out[33])
         len = in[0];
         io_out_byte(SMBHSTDAT0, len);
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
-        for (new i = 0; i < len; i++)
-            io_out_byte(SMBBLKDAT, in[i+1]);
+        // For simplicity, we have two passes of writes, as it avoids checking for length on every loop iteration.
+        new count = len >>> 3;
+        for (new i = 0; i < count; i++) {
+            io_out_bytes(SMBBLKDAT, 8, in[i + 1]);
+            len -= 8;
+        }
+        if (len > 0) {
+            io_out_bytes(SMBBLKDAT, len, in[count + 1]);
+        }
     }
 
     ret = i801_transaction(xact);
@@ -401,8 +430,15 @@ i801_block_transaction_by_block(read_write, command, in[33], out[33])
 
         out[0] = len;
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
-        for (new i = 0; i < len; i++)
-            out[i + 1] = io_in_byte(SMBBLKDAT);
+        // Same logic as for writes.
+        new count = len >>> 3;
+        for (new i = 0; i < count; i++) {
+            out[i + 1] = io_in_bytes(SMBBLKDAT, 8);
+            len -= 8;
+        }
+        if (len > 0) {
+            out[count + 1] = io_in_bytes(SMBBLKDAT, len);
+        }
     }
 cleanup:
     io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & ~SMBAUXCTL_E32B);
@@ -483,7 +519,7 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, &out)
     return 0;
 }
 
-i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33])
+i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[], out[])
 {
     if (read_write == I2C_SMBUS_READ && command == I2C_SMBUS_BLOCK_DATA)
         /* Mark block length as invalid */
@@ -565,7 +601,7 @@ unlock:
     return status;
 }
 
-i801_access_block(addr, read_write, command, size, in[33], out[33])
+i801_access_block(addr, read_write, command, size, in[], out[])
 {
     new status, hststs;
 
@@ -740,24 +776,18 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 5)
+    if (in_size < 2 || out_size < 5)
         return STATUS_BUFFER_TOO_SMALL;
 
     new address = in[0];
     new command = in[1];
 
-    new unused[I2C_SMBUS_BLOCK_MAX + 1];
-    new out_data[I2C_SMBUS_BLOCK_MAX + 1];
+    new in_data[1];
 
-    new status = i801_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
+    new status = i801_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, in_data, out);
 
     if (!NT_SUCCESS(status))
         return status;
-
-    out[0] = out_data[0];
-    pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
 
     return status;
 }
@@ -766,22 +796,29 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
-    if (in_size < 7)
+    if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
     new address = in[0];
     new command = in[1];
     new length = in[2];
 
-    if (length > I2C_SMBUS_BLOCK_MAX)
+    if (length < 0 || length > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
     
-    new in_data[I2C_SMBUS_BLOCK_MAX + 1];
-    in_data[0] = length;
-    unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 3 * 8, 1);
-    new unused[I2C_SMBUS_BLOCK_MAX + 1];
+    new count = (length + 7) >>> 3;
 
-    return i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, unused);
+    if (in_size < 3 + count)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new in_data[5];
+    in_data[0] = length;
+    for (new i = 0; i < count; i++)
+        in_data[i+1] = in[i+3];
+    
+    new out_data[1];
+
+    return i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, out_data);
 }
 
 /*
@@ -821,31 +858,30 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_block_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
-    if (in_size < 7)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 5)
+    if (in_size < 3 || out_size < 5)
         return STATUS_BUFFER_TOO_SMALL;
 
     new address = in[0];
     new command = in[1];
     new length = in[2];
 
-    if (length > I2C_SMBUS_BLOCK_MAX)
+    if (length < 0 || length > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
-    new in_data[I2C_SMBUS_BLOCK_MAX + 1];
+    new count = (length + 7) >>> 3;
+    
+    if (in_size < 3 + count)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new in_data[5];
     in_data[0] = length;
-    unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 3 * 8, 1);
+    for (new i = 0; i < count; i++)
+        in_data[i+1] = in[i+3];
 
-    new out_data[I2C_SMBUS_BLOCK_MAX + 1];
-
-    new status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out_data);
+    new status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out);
 
     if (!NT_SUCCESS(status))
         return status;
-
-    out[0] = out_data[0];
-    pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
 
     return status;
 }

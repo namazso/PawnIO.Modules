@@ -646,12 +646,9 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
-
     new unused;
 
-    return i801_access_simple(address, command, 0, I2C_SMBUS_QUICK, 0, unused);
+    return i801_access_simple(in[0], in[1], 0, I2C_SMBUS_QUICK, 0, unused);
 }
 
 /*
@@ -665,14 +662,10 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_byte(in[], in_size, out[], out_size);
 public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
+    if (in_size < 1 || out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-
-    return i801_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
+    return i801_access_simple(in[0], I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = data
@@ -682,12 +675,9 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new data = in[1];
-
     new unused;
 
-    return i801_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, 0, unused);
+    return i801_access_simple(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE, 0, unused);
 }
 
 /*
@@ -700,15 +690,10 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_byte_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
+    if (in_size < 2 || out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
-
-    return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, 0, out[0]);
+    return i801_access_simple(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BYTE_DATA, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
@@ -718,13 +703,9 @@ public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
-    new data = in[2];
-
     new unused;
 
-    return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, data, unused);
+    return i801_access_simple(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE_DATA, in[2], unused);
 }
 
 /*
@@ -737,15 +718,10 @@ public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_word_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
+    if (in_size < 2 || out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
-
-    return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, 0, out[0]);
+    return i801_access_simple(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_WORD_DATA, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
@@ -755,13 +731,9 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
-    new data = in[2];
-
     new unused;
 
-    return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_WORD_DATA, data, unused);
+    return i801_access_simple(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_WORD_DATA, in[2], unused);
 }
 
 /*
@@ -777,12 +749,9 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2 || out_size < 5)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
-
     new in_data[1];
 
-    new status = i801_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, in_data, out);
+    new status = i801_access_block(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BLOCK_DATA, in_data, out);
 
     return status;
 }
@@ -794,8 +763,6 @@ public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
     new length = in[2];
 
     if (length < 0 || length > I2C_SMBUS_BLOCK_MAX)
@@ -813,7 +780,7 @@ public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     
     new out_data[1];
 
-    return i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, out_data);
+    return i801_access_block(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_DATA, in_data, out_data);
 }
 
 /*
@@ -827,18 +794,12 @@ public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_process_call(in[], in_size, out[], out_size) {
-    if (in_size < 3)
+    if (in_size < 3 || out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new command = in[1];
-    new data = in[2];
 
     new unused;
 
-    return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_PROC_CALL, data, unused);
+    return i801_access_simple(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_PROC_CALL, in[2], unused);
 }
 
 /*
@@ -856,8 +817,6 @@ public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     if (in_size < 3 || out_size < 5)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
     new length = in[2];
 
     if (length < 0 || length > I2C_SMBUS_BLOCK_MAX)
@@ -873,7 +832,7 @@ public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     for (new i = 0; i < count; i++)
         in_data[i+1] = in[i+3];
 
-    new status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out);
+    new status = i801_access_block(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_PROC_CALL, in_data, out);
 
     return status;
 }

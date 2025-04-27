@@ -33,3 +33,21 @@ stock _max(a, b) {
 #define PAGE_SIZE (0x1000)
 
 #define BIT(%1) (1 << (%1))
+
+stock unpack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
+    for (new i = 0; i < size; i++) {
+        new src_idx = src_offs + i;
+        new src_cell = src[src_idx / 8];
+        new byte = (src_cell >> ((src_idx % 8) * 8)) & 0xff;
+        dst[dst_offs + i] = byte;
+    }
+}
+
+stock pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
+    for (new i = 0; i < size; i++) {
+        new byte = src[src_offs + i] & 0xff;
+        new dst_idx = dst_offs + i;
+        dst[dst_idx / 8] &= ~(0xff << ((dst_idx % 8) * 8));
+        dst[dst_idx / 8] |= byte << ((dst_idx % 8) * 8);
+    }
+}

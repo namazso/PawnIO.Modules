@@ -272,10 +272,8 @@ io_out_bytes(port, count, bytes)
 io_in_bytes(port, count)
 {
     new bytes = 0;
-    while (true) {
-        bytes |= io_in_byte(port);
-        if (--count == 0) break;
-        bytes <<= 8;
+    for (new i = 0; i < count; i++) {
+        bytes |= io_in_byte(port) << (i << 3);
     }
     return bytes;
 }

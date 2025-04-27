@@ -784,9 +784,6 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
 
     new status = i801_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, in_data, out);
 
-    if (!NT_SUCCESS(status))
-        return status;
-
     return status;
 }
 
@@ -877,9 +874,6 @@ public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
         in_data[i+1] = in[i+3];
 
     new status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out);
-
-    if (!NT_SUCCESS(status))
-        return status;
 
     return status;
 }

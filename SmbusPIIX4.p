@@ -570,7 +570,7 @@ public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
  * block-sized virtual registers.
  */
 // IN: [0] = address, [1] = command
-// OUT: [0] = length, [1...] = data
+// OUT: [0] = length, [1..5] = data
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_block_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
@@ -596,7 +596,7 @@ public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
     return status;
 }
 
-// IN: [0] = address, [1] = command, [2..5] = data
+// IN: [0] = address, [1] = command, [2] = length, [3..7] = data
 // WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_block_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {

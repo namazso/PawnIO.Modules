@@ -54,6 +54,10 @@
 #define PIIX4_BYTE			0x04
 #define PIIX4_BYTE_DATA		0x08
 #define PIIX4_WORD_DATA		0x0C
+#define PIIX4_BLOCK_DATA	0x14
+
+#define PIIX4_ASF_PROC_CALL	0x10
+#define PIIX4_ASF_BLOCK_PROC_CALL	0x18
 
 #define SB800_PIIX4_PORT_IDX_KERNCZ		0x02
 #define SB800_PIIX4_PORT_IDX_MASK_KERNCZ	0x18
@@ -75,9 +79,6 @@
 #define SMBSHDWCMD	(0x09 + piix4_smba)
 #define SMBSLVEVT	(0x0A + piix4_smba)
 #define SMBSLVDAT	(0x0C + piix4_smba)
-
-/* PIIX4 constants */
-#define PIIX4_BLOCK_DATA	0x14
 
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
@@ -546,55 +547,6 @@ public ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
         data[i+1] = in[i+2];
 
     return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_DATA, data, out);
-}
-
-/*
- * The SMBus Process Call protocol (SMBProcessCall) transfers 2 bytes of data
- * bi-directionally (performs a Write Word followed by a Read Word as an atomic
- * transaction). This protocol uses a command value to reference up to 256
- * word-sized virtual registers.
- */
-// IN: [0] = address, [1] = command, [2] = data
-// OUT: [0] = data
-forward ioctl_piix4_process_call(in[], in_size, out[], out_size);
-public ioctl_piix4_process_call(in[], in_size, out[], out_size) {
-    if (in_size < 3)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new data[1];
-    data[0] = in[2];
-
-    return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_PROC_CALL, data, out);
-}
-
-/*
- * The SMBus Block Write-Read Block Process Call protocol (SMBBlockProcessCall)
- * transfers a block of data bi-directionally (performs a Write Block followed
- * by a Read Block as an atomic transaction). The maximum aggregate amount of
- * data that may be transferred is limited to 32 bytes. This protocol uses a
- * command value to reference up to 256 block-sized virtual registers.
- */
-// IN: [0] = address, [1] = command, [2...] = data
-// OUT: [0] = length, [1...] = data
-forward ioctl_piix4_block_process_call(in[], in_size, out[], out_size);
-public ioctl_piix4_block_process_call(in[], in_size, out[], out_size) {
-    if (in_size < 3)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new data[I2C_SMBUS_BLOCK_MAX + 1]
-    data[0] = in_size - 2;
-
-    if (data[0] > I2C_SMBUS_BLOCK_MAX)
-        return STATUS_INVALID_PARAMETER;
-
-    for (new i = 0; i < data[0]; i++)
-        data[i+1] = in[i+2];
-
-    return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_PROC_CALL, data, out);
 }
 
 main() {

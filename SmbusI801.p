@@ -399,8 +399,6 @@ i801_block_transaction_by_block(read_write, command, in[33], out[33])
             goto cleanup;
         }
 
-        if (len > I2C_SMBUS_BLOCK_MAX)
-            len = I2C_SMBUS_BLOCK_MAX;
         out[0] = len;
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)

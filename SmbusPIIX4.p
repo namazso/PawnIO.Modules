@@ -226,9 +226,8 @@ piix4_transaction()
     return status;
 }
 
-piix4_access(addr, read_write, command, size, in[], out[])
+piix4_access_simple(addr, read_write, command, size, in, &out)
 {
-    new i, len;
     new status;
 
     switch (size) {
@@ -252,7 +251,7 @@ piix4_access(addr, read_write, command, size, in[], out[])
                         (addr << 1) | read_write);
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE)
-                io_out_byte(SMBHSTDAT0, in[0]);
+                io_out_byte(SMBHSTDAT0, in);
             size = PIIX4_BYTE_DATA;
         }
     case I2C_SMBUS_WORD_DATA:
@@ -261,11 +260,42 @@ piix4_access(addr, read_write, command, size, in[], out[])
                         (addr << 1) | read_write);
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE) {
-                io_out_byte(SMBHSTDAT0, in[0] & 0xff);
-                io_out_byte(SMBHSTDAT1, (in[0] & 0xff00) >> 8);
+                io_out_byte(SMBHSTDAT0, in);
+                io_out_byte(SMBHSTDAT1, in >> 8);
             }
             size = PIIX4_WORD_DATA;
         }
+    default:
+        {
+            debug_print(''Unsupported transaction %d\n'', size);
+            return STATUS_NOT_SUPPORTED;
+        }
+    }
+
+    io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
+
+    status = piix4_transaction();
+    if (!NT_SUCCESS(status))
+        return status;
+
+    if ((read_write == I2C_SMBUS_WRITE) || (size == PIIX4_QUICK))
+        return STATUS_SUCCESS;
+
+    switch (size) {
+    case PIIX4_BYTE, PIIX4_BYTE_DATA:
+        out = io_in_byte(SMBHSTDAT0);
+    case PIIX4_WORD_DATA:
+        out = io_in_byte(SMBHSTDAT0) + (io_in_byte(SMBHSTDAT1) << 8);
+    }
+    return STATUS_SUCCESS;
+}
+
+piix4_access_block(addr, read_write, command, size, in[33], out[33])
+{
+    new i, len;
+    new status;
+
+    switch (size) {
     case I2C_SMBUS_BLOCK_DATA:
         {
             io_out_byte(SMBHSTADD,
@@ -299,10 +329,6 @@ piix4_access(addr, read_write, command, size, in[], out[])
         return STATUS_SUCCESS;
 
     switch (size) {
-    case PIIX4_BYTE, PIIX4_BYTE_DATA:
-        out[0] = io_in_byte(SMBHSTDAT0);
-    case PIIX4_WORD_DATA:
-        out[0] = io_in_byte(SMBHSTDAT0) + (io_in_byte(SMBHSTDAT1) << 8);
     case PIIX4_BLOCK_DATA:
         {
             out[0] = io_in_byte(SMBHSTDAT0);
@@ -367,6 +393,10 @@ unmap:
 /* Allows changing between I2C ports on the chipset. */
 // IN: [0] = port (optional)
 // OUT: [0] = previous port
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+// WARNING: Changing to port 2, 3, or 4 may break other software expecting to be using port 0.
+// NOTICE: Port 1 uses a different base address, and should not break other software expecting another port.
+// NOTICE: Ports 3 and 4 are marked as reserved in the datasheet, use at your own risk.
 forward ioctl_piix4_port_sel(in[], in_size, out[], out_size);
 public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     if (out_size < 1)
@@ -410,14 +440,18 @@ public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
  * (at offset 0) can be specified in the field definition.
  */
 // IN: [0] = address, [1] = command
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_quick(in[], in_size, out[], out_size);
 public ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
+    new address = in[0];
+    new command = in[1];
 
-    return piix4_access(in[0], in[1], 0, I2C_SMBUS_QUICK, data, out);
+    new unused;
+
+    return piix4_access_simple(address, command, 0, I2C_SMBUS_QUICK, 0, unused);
 }
 
 /*
@@ -428,6 +462,7 @@ public ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_byte(in[], in_size, out[], out_size);
 public ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
     if (in_size < 1)
@@ -435,20 +470,24 @@ public ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
+    new address = in[0];
 
-    return piix4_access(in[0], I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, data, out);
+    return piix4_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_byte(in[], in_size, out[], out_size);
 public ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
+    new address = in[0];
+    new data = in[1];
 
-    return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE, data, out);
+    new unused;
+
+    return piix4_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, 0, unused);
 }
 
 /*
@@ -458,6 +497,7 @@ public ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_byte_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -465,21 +505,26 @@ public ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
+    new address = in[0];
+    new command = in[1];
 
-    return piix4_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BYTE_DATA, data, out);
+    return piix4_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_byte_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
-    data[0] = in[2];
+    new address = in[0];
+    new command = in[1];
+    new data = in[2];
 
-    return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BYTE_DATA, data, out);
+    new unused;
+
+    return piix4_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, data, unused);
 }
 
 /*
@@ -489,6 +534,7 @@ public ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command
 // OUT: [0] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_word_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -496,21 +542,26 @@ public ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
+    new address = in[0];
+    new command = in[1];
 
-    return piix4_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_WORD_DATA, data, out);
+    return piix4_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, 0, out[0]);
 }
 
 // IN: [0] = address, [1] = command, [2] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_word_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
-    data[0] = in[2];
+    new address = in[0];
+    new command = in[1];
+    new data = in[2];
 
-    return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_WORD_DATA, data, out);
+    new unused;
+
+    return piix4_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_WORD_DATA, data, unused);
 }
 
 /*
@@ -520,33 +571,51 @@ public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
  */
 // IN: [0] = address, [1] = command
 // OUT: [0] = length, [1...] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_block_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
+    if (out_size < 5)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[1];
-    return piix4_access(in[0], I2C_SMBUS_READ, in[1], I2C_SMBUS_BLOCK_DATA, data, out);
+    new address = in[0];
+    new command = in[1];
+
+    new unused[I2C_SMBUS_BLOCK_MAX + 1];
+    new out_data[I2C_SMBUS_BLOCK_MAX + 1];
+
+    new status = piix4_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
+
+    if (!NT_SUCCESS(status))
+        return status;
+
+    out[0] = out_data[0];
+    pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
+
+    return status;
 }
 
-// IN: [0] = address, [1] = command, [2...] = data
+// IN: [0] = address, [1] = command, [2..5] = data
+// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_block_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
-    if (in_size < 3)
+    if (in_size < 7)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new data[I2C_SMBUS_BLOCK_MAX + 1];
-    data[0] = in_size - 2;
+    new address = in[0];
+    new command = in[1];
+    new length = in[2];
 
-    if (data[0] > I2C_SMBUS_BLOCK_MAX)
+    if (length > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
-    for (new i = 0; i < data[0]; i++)
-        data[i+1] = in[i+2];
+    new in_data[I2C_SMBUS_BLOCK_MAX + 1];
+    in_data[0] = length;
+    unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 3 * 8, 1);
+    new unused[I2C_SMBUS_BLOCK_MAX + 1];
 
-    return piix4_access(in[0], I2C_SMBUS_WRITE, in[1], I2C_SMBUS_BLOCK_DATA, data, out);
+    return piix4_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, unused);
 }
 
 main() {

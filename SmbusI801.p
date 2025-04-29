@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
 
@@ -598,15 +600,19 @@ unlock:
     return status;
 }
 
-
-/*
- * The SMBus Read/Write Quick protocol (SMBQuick) is typically used to control
- * simple devices using a device-specific binary command (for example, ON and OFF).
- * Command values are not used by this protocol and thus only a single element
- * (at offset 0) can be specified in the field definition.
- */
-// IN: [0] = address, [1] = command
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus quick write.
+///
+/// The SMBus Read/Write Quick protocol (SMBQuick) is typically used to control
+/// simple devices using a device-specific binary command (for example, ON and OFF).
+/// Command values are not used by this protocol and thus only a single element
+/// (at offset 0) can be specified in the field definition.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_quick(in[], in_size, out[], out_size);
 public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -620,15 +626,19 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     return i801_access_simple(address, command, 0, I2C_SMBUS_QUICK, 0, unused);
 }
 
-/*
- * The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
- * byte of data. Like Read/Write Quick, command values are not used by this
- * protocol and thus only a single element (at offset 0) can be specified in
- * the field definition.
- */
-// IN: [0] = address
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte receive.
+///
+/// The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
+/// byte of data. Like Read/Write Quick, command values are not used by this
+/// protocol and thus only a single element (at offset 0) can be specified in
+/// the field definition.
+///
+/// @param in [0] = Address
+/// @param in_size Must be 1
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_byte(in[], in_size, out[], out_size);
 public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
     if (in_size < 1)
@@ -641,8 +651,19 @@ public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
 }
 
-// IN: [0] = address, [1] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte send.
+///
+/// The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
+/// byte of data. Like Read/Write Quick, command values are not used by this
+/// protocol and thus only a single element (at offset 0) can be specified in
+/// the field definition.
+///
+/// @param in [0] = Address, [1] = Data
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_byte(in[], in_size, out[], out_size);
 public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -656,14 +677,18 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, 0, unused);
 }
 
-/*
- * The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
- * data. But unlike Send/Receive Byte, this protocol uses a command value to
- * reference up to 256 byte-sized virtual registers.
- */
-// IN: [0] = address, [1] = command
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte read.
+///
+/// The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
+/// data. But unlike Send/Receive Byte, this protocol uses a command value to
+/// reference up to 256 byte-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_byte_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -677,8 +702,18 @@ public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, 0, out[0]);
 }
 
-// IN: [0] = address, [1] = command, [2] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte write.
+///
+/// The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
+/// data. But unlike Send/Receive Byte, this protocol uses a command value to
+/// reference up to 256 byte-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Data
+/// @param in_size Must be 3
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_byte_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -693,14 +728,18 @@ public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, data, unused);
 }
 
-/*
- * The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
- * This protocol also uses a command value to reference up to 256 word-sized
- * virtual device registers.
- */
-// IN: [0] = address, [1] = command
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus word read.
+///
+/// The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
+/// This protocol also uses a command value to reference up to 256 word-sized
+/// virtual device registers.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_word_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -714,8 +753,18 @@ public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, 0, out[0]);
 }
 
-// IN: [0] = address, [1] = command, [2] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus word write.
+///
+/// The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
+/// This protocol also uses a command value to reference up to 256 word-sized
+/// virtual device registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Data
+/// @param in_size Must be 3
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_word_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -730,14 +779,18 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_WORD_DATA, data, unused);
 }
 
-/*
- * The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
- * (0-32 bytes) data. This protocol uses a command value to reference up to 256
- * block-sized virtual registers.
- */
-// IN: [0] = address, [1] = command
-// OUT: [0] = length, [1..5] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus block read.
+///
+/// The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
+/// (0-32 bytes) data. This protocol uses a command value to reference up to 256
+/// block-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
+/// @param out_size Must be 5
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_read_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -762,8 +815,18 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     return status;
 }
 
-// IN: [0] = address, [1] = command, [2] = length, [3..7] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus block write.
+///
+/// The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
+/// (0-32 bytes) data. This protocol uses a command value to reference up to 256
+/// block-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Length in bytes, [3..7] = Data (byte packed)
+/// @param in_size Must be 7
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_write_block_data(in[], in_size, out[], out_size);
 public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 7)
@@ -784,15 +847,19 @@ public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     return i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, unused);
 }
 
-/*
- * The SMBus Process Call protocol (SMBProcessCall) transfers 2 bytes of data
- * bi-directionally (performs a Write Word followed by a Read Word as an atomic
- * transaction). This protocol uses a command value to reference up to 256
- * word-sized virtual registers.
- */
-// IN: [0] = address, [1] = command, [2] = data
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus process call.
+///
+/// The SMBus Process Call protocol (SMBProcessCall) transfers 2 bytes of data
+/// bi-directionally (performs a Write Word followed by a Read Word as an atomic
+/// transaction). This protocol uses a command value to reference up to 256
+/// word-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Data
+/// @param in_size Must be 3
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_process_call(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -809,16 +876,20 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
     return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_PROC_CALL, data, unused);
 }
 
-/*
- * The SMBus Block Write-Read Block Process Call protocol (SMBBlockProcessCall)
- * transfers a block of data bi-directionally (performs a Write Block followed
- * by a Read Block as an atomic transaction). The maximum aggregate amount of
- * data that may be transferred is limited to 32 bytes. This protocol uses a
- * command value to reference up to 256 block-sized virtual registers.
- */
-// IN: [0] = address, [1] = command, [2] = length, [3..7] = data
-// OUT: [0] = length, [1..5] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus block process call.
+///
+/// The SMBus Block Write-Read Block Process Call protocol (SMBBlockProcessCall)
+/// transfers a block of data bi-directionally (performs a Write Block followed
+/// by a Read Block as an atomic transaction). The maximum aggregate amount of
+/// data that may be transferred is limited to 32 bytes. This protocol uses a
+/// command value to reference up to 256 block-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Length in bytes, [3..7] = Data (byte packed)
+/// @param in_size Must be 7
+/// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
+/// @param out_size Must be 5
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_i801_block_process_call(in[], in_size, out[], out_size);
 public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     if (in_size < 7)

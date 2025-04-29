@@ -1,5 +1,5 @@
 //  PawnIO Modules - Modules for various hardware to be used with PawnIO.
-//  Copyright (C) 2023  namazso <admin@namazso.eu>
+//  Copyright (C) 2025  namazso <admin@namazso.eu>
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
 
@@ -366,7 +368,14 @@ get_pm_table_base(&base) {
 
 new g_table_base;
 
-/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+/// Resolve physical memory table.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out [0] = Version, [1] = Table base
+/// @param out_size Must be 2
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_resolve_pm_table(in[], in_size, out[], out_size);
 public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
     if (out_size < 2)
@@ -390,12 +399,26 @@ public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+/// Update physical memory table.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_update_pm_table(in[], in_size, out[], out_size);
 public ioctl_update_pm_table(in[], in_size, out[], out_size) {
     return transfer_table_to_dram();
 }
 
+/// Read physical memory table.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
 forward ioctl_read_pm_table(in[], in_size, out[], out_size);
 public ioctl_read_pm_table(in[], in_size, out[], out_size) {
     if (!g_table_base)
@@ -421,6 +444,13 @@ public ioctl_read_pm_table(in[], in_size, out[], out_size) {
     return status;
 }
 
+/// Get CPU Codename integer.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out [0] = Code name integer
+/// @param out_size Must be 1
+/// @return An NTSTATUS
 forward ioctl_get_code_name(in[], in_size, out[], out_size);
 public ioctl_get_code_name(in[], in_size, out[], out_size) {
     if (out_size < 1)
@@ -430,7 +460,14 @@ public ioctl_get_code_name(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+/// Get SMU version.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out [0] = Version
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_get_smu_version(in[], in_size, out[], out_size);
 public ioctl_get_smu_version(in[], in_size, out[], out_size) {
     if (out_size < 1)

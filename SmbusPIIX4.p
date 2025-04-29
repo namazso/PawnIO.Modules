@@ -89,7 +89,7 @@ piix4_init()
 
     // Check that a PCI device at 00:14.0 exists and is an AMD SMBus controller
     new dev_vid;
-    status = pci_config_read_word(0x0, 0x14, 0x0, 0x0, dev_vid)
+    status = pci_config_read_word(0x0, 0x14, 0x0, 0x0, dev_vid);
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 
@@ -292,9 +292,6 @@ piix4_access_simple(addr, read_write, command, size, in, &out)
 
 piix4_access_block(addr, read_write, command, size, in[33], out[33])
 {
-    new i, len;
-    new status;
-
     switch (size) {
     case I2C_SMBUS_BLOCK_DATA:
         {
@@ -302,12 +299,12 @@ piix4_access_block(addr, read_write, command, size, in[33], out[33])
                         (addr << 1) | read_write);
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE) {
-                len = in[0];
-                if (len == 0 || len > I2C_SMBUS_BLOCK_MAX)
+                new len = in[0];
+                if (len <= 0 || len > I2C_SMBUS_BLOCK_MAX)
                     return STATUS_INVALID_PARAMETER;
                 io_out_byte(SMBHSTDAT0, len);
                 io_in_byte(SMBHSTCNT);    /* Reset SMBBLKDAT */
-                for (i = 1; i <= len; i++)
+                for (new i = 1; i <= len; i++)
                     io_out_byte(SMBBLKDAT, in[i]);
             }
             size = PIIX4_BLOCK_DATA;
@@ -321,7 +318,7 @@ piix4_access_block(addr, read_write, command, size, in[33], out[33])
 
     io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
 
-    status = piix4_transaction();
+    new status = piix4_transaction();
     if (!NT_SUCCESS(status))
         return status;
 
@@ -331,12 +328,13 @@ piix4_access_block(addr, read_write, command, size, in[33], out[33])
     switch (size) {
     case PIIX4_BLOCK_DATA:
         {
-            out[0] = io_in_byte(SMBHSTDAT0);
-            if (out[0] == 0 || out[0] > I2C_SMBUS_BLOCK_MAX)
+            new len = io_in_byte(SMBHSTDAT0);
+            if (len <= 0 || len > I2C_SMBUS_BLOCK_MAX)
                 return STATUS_DEVICE_PROTOCOL_ERROR;
+            out[0] = len;
             io_in_byte(SMBHSTCNT);    /* Reset SMBBLKDAT */
-            for (i = 1; i <= out[0]; i++)
-                out[i] = io_in_byte(SMBBLKDAT);
+            for (new i = 0; i < len; i++)
+                out[1 + i] = io_in_byte(SMBBLKDAT);
         }
     }
     return STATUS_SUCCESS;
@@ -346,8 +344,8 @@ piix4_port_sel(port, &old_port)
 {
     new status = STATUS_SUCCESS;
 
-    new port_to_reg[] = [0b00, 0b00, 0b01, 0b10, 0b11];
-    new reg_to_port[] = [0, 2, 3, 4]
+    static port_to_reg[] = [0b00, 0b00, 0b01, 0b10, 0b11];
+    static reg_to_port[] = [0, 2, 3, 4];
 
     // Map MMIO space
     new addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);

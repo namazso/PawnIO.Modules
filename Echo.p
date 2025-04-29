@@ -14,9 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
 
+/// Bitwise not.
+///
+/// @param in [0] = Value
+/// @param in_size Must be 1
+/// @param out Bitwise not of Value
+/// @param out_size Must be 1
+/// @return An NTSTATUS
 forward ioctl_not(in[], in_size, out[], out_size);
 public ioctl_not(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
@@ -39,7 +48,6 @@ main() {
     return STATUS_SUCCESS;
 }
 
-forward unload();
 public unload() {
     debug_print(''Echo module unloaded!'');
     return STATUS_SUCCESS;

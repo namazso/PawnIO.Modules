@@ -77,3 +77,6 @@ stock pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
         dst[dst_idx / 8] |= byte << ((dst_idx % 8) * 8);
     }
 }
+
+/// Executed on module unload.
+forward unload();

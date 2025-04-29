@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
 
@@ -21,6 +23,14 @@ is_port_allowed(port) {
     return port == 0x62 || port == 0x66;
 }
 
+/// Read byte from ACPI EC.
+///
+/// @param in [0] = Port
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_EC" mutant before calling this
 forward ioctl_pio_read(in[], in_size, out[], out_size);
 public ioctl_pio_read(in[], in_size, out[], out_size) {
     if (in_size < 1)
@@ -37,6 +47,14 @@ public ioctl_pio_read(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
+/// Write byte to ACPI EC.
+///
+/// @param in [0] = Port, [1] = Value
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_EC" mutant before calling this
 forward ioctl_pio_write(in[], in_size, out[], out_size);
 public ioctl_pio_write(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -51,6 +69,8 @@ public ioctl_pio_write(in[], in_size, out[], out_size) {
     io_out_byte(port, value);
     return STATUS_SUCCESS;
 }
+
+// TODO: Should probably move register read and write from usermode
 
 main() {
     return STATUS_SUCCESS;

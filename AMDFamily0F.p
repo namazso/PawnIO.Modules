@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
 
@@ -41,6 +43,13 @@ bool:is_allowed_msr_read(msr) {
     return false;
 }
 
+/// Read MSR.
+///
+/// @param in [0] = MSR
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
 forward ioctl_read_msr(in[], in_size, out[], out_size);
 public ioctl_read_msr(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
@@ -59,7 +68,14 @@ public ioctl_read_msr(in[], in_size, out[], out_size) {
     return status;
 }
 
-/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+/// Read THERMTRIP status register.
+///
+/// @param in [0] = CPU index, [1] = Core index
+/// @param in_size Must be 2
+/// @param out THERMTRIP status register
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 forward ioctl_get_thermtrip(in[], in_size, out[], out_size);
 public ioctl_get_thermtrip(in[], in_size, out[], out_size) {
     if (in_size < 2 || out_size < 1)

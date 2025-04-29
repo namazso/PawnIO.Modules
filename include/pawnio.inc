@@ -1,5 +1,5 @@
 //  PawnIO Modules - Modules for various hardware to be used with PawnIO.
-//  Copyright (C) 2023  namazso <admin@namazso.eu>
+//  Copyright (C) 2025  namazso <admin@namazso.eu>
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -14,15 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "core.inc"
 #include "ntstatus.inc"
 #include "native.inc"
 
-stock is_amd(vendor[4]) {
+/// Test if a vendor string is AMD
+///
+/// @param vendor Vendor string from CPUID
+/// @return Whether the vendor is AMD
+stock bool:is_amd(vendor[4]) {
     return vendor[1] == CHAR4_CONST('A', 'u', 't', 'h') && vendor[3] == CHAR4_CONST('e', 'n', 't', 'i') && vendor[2] == CHAR4_CONST('c', 'A', 'M', 'D');
 }
 
+/// Test if a vendor string is Intel
+///
+/// @param vendor Vendor string from CPUID
+/// @return Whether the vendor is Intel
 stock is_intel(vendor[4]) {
     return vendor[1] == CHAR4_CONST('G', 'e', 'n', 'u') && vendor[3] == CHAR4_CONST('i', 'n', 'e', 'I') && vendor[2] == CHAR4_CONST('n', 't', 'e', 'l');
 }

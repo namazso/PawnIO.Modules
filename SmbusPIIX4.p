@@ -399,17 +399,21 @@ forward ioctl_piix4_port_sel(in[], in_size, out[], out_size);
 public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
+    if (in_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    new new_port = in[0];
 
     new old_addr = piix4_smba;
     new old_port = 0;
 
-    if (in_size >= 1)
-    {
-        switch (in[0]) {
-        case 0, 2, 3, 4:
+    new status = STATUS_SUCCESS;
+
+    switch (new_port) {
+    case -1, 0, 2, 3, 4:
             {
                 piix4_smba = addresses[0];
-                piix4_port_sel(in[0], old_port);
+            status = piix4_port_sel(new_port, old_port);
             }
         case 1:
             // Port 1 is the aux port, we just change the base address
@@ -417,18 +421,16 @@ public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
         default:
             return STATUS_INVALID_PARAMETER;
         }
-    }
+
+    if (!NT_SUCCESS(status))
+        return status;
 
     if (old_addr == addresses[1])
         out[0] = 1;
     else
-    {
-        if (in_size < 1)
-            old_port = piix4_port_sel(-1, old_port);
         out[0] = old_port;
-    }
 
-    return STATUS_SUCCESS;
+    return status;
 }
 
 /*

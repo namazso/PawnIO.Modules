@@ -138,6 +138,20 @@ native NTSTATUS:physical_write_dword(pa, value);
 /// @note Only works on ranges already mapped by the kernel
 native NTSTATUS:physical_write_qword(pa, value);
 
+const VA:NULL = VA:0;
+
+stock VA:operator+(VA:a, b) {
+    return a + VA:b;
+}
+
+stock VA:operator-(VA:a, b) {
+    return a - VA:b;
+}
+
+stock operator-(VA:a, VA:b) {
+    return _:a - _:b;
+}
+
 /// Map IO space.
 ///
 /// Map physical memory to virtual, which can be accessed by the `virtual_*`
@@ -148,75 +162,75 @@ native NTSTATUS:physical_write_qword(pa, value);
 /// @return Virtual address
 /// @retval 0 Mapping failed, not enough VA space
 /// @warning The mapping is a resource that must be freed (unmapped)
-native io_space_map(pa, size);
+native VA:io_space_map(pa, size);
 
 /// Unmap IO space.
 ///
 /// @param pa Physical address, page aligned
 /// @param size Size to unmap, page aligned
-native Void:io_space_unmap(va, size);
+native Void:io_space_unmap(VA:va, size);
 
 /// Read a byte from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native NTSTATUS:virtual_read_byte(va, &value);
+native NTSTATUS:virtual_read_byte(VA:va, &value);
 
 /// Read a word from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native NTSTATUS:virtual_read_word(va, &value);
+native NTSTATUS:virtual_read_word(VA:va, &value);
 
 /// Read a double word from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native NTSTATUS:virtual_read_dword(va, &value);
+native NTSTATUS:virtual_read_dword(VA:va, &value);
 
 /// Read a quad word from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native NTSTATUS:virtual_read_qword(va, &value);
+native NTSTATUS:virtual_read_qword(VA:va, &value);
 
 /// Write a byte to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native NTSTATUS:virtual_write_byte(va, value);
+native NTSTATUS:virtual_write_byte(VA:va, value);
 
 /// Write a word to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native NTSTATUS:virtual_write_word(va, value);
+native NTSTATUS:virtual_write_word(VA:va, value);
 
 /// Write a double word to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native NTSTATUS:virtual_write_dword(va, value);
+native NTSTATUS:virtual_write_dword(VA:va, value);
 
 /// Write a quad word to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native NTSTATUS:virtual_write_qword(va, value);
+native NTSTATUS:virtual_write_qword(VA:va, value);
 
 // These are broken and don't return the result of the operation
-//native virtual_cmpxchg_byte(va, exchange, comparand);
-//native virtual_cmpxchg_word(va, exchange, comparand);
-//native virtual_cmpxchg_dword(va, exchange, comparand);
-//native virtual_cmpxchg_qword(va, exchange, comparand);
+//native NTSTATUS:virtual_cmpxchg_byte(VA:va, exchange, comparand);
+//native NTSTATUS:virtual_cmpxchg_word(VA:va, exchange, comparand);
+//native NTSTATUS:virtual_cmpxchg_dword(VA:va, exchange, comparand);
+//native NTSTATUS:virtual_cmpxchg_qword(VA:va, exchange, comparand);
 
 /// Allocate non-paged virtual memory.
 ///
@@ -224,12 +238,12 @@ native NTSTATUS:virtual_write_qword(va, value);
 /// @return Allocation virtual address
 /// @retval 0 Out of memory
 /// @warning The allocation is a resource that must be freed
-native virtual_alloc(size);
+native VA:virtual_alloc(size);
 
 /// Free a virtual allocation.
 ///
 /// @param va Allocation virtual address
-native virtual_free(va);
+native virtual_free(VA:va);
 
 /// Read a byte from PCI configuration space.
 ///
@@ -316,7 +330,7 @@ native NTSTATUS:pci_config_write_qword(bus, device, function, offset, value);
 /// @param name Function name
 /// @return Virtual address of function
 /// @retval 0 Function not found
-native get_proc_address(name[]);
+native VAProc:get_proc_address(name[]);
 
 /// Invoke an arbitrary function pointer.
 ///
@@ -339,7 +353,7 @@ native get_proc_address(name[]);
 /// @param a14 Parameter to pass through
 /// @param a15 Parameter to pass through
 /// @return NTSTATUS of any exception that occurred, or STATUS_SUCCESS
-native NTSTATUS:invoke(address, &retval, a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0, a8=0, a9=0, a10=0, a11=0, a12=0, a13=0, a14=0, a15=0);
+native NTSTATUS:invoke(VAProc:address, &retval, a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0, a8=0, a9=0, a10=0, a11=0, a12=0, a13=0, a14=0, a15=0);
 
 /// Sleep.
 ///
@@ -450,7 +464,7 @@ native Void:invlpg(va);
 ///
 /// @param type Type
 /// @param descriptor Pointer to descriptor
-native Void:invpcid(type, descriptor);
+native Void:invpcid(type, VA:descriptor);
 
 /// Read performance counter.
 ///

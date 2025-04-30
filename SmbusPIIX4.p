@@ -118,8 +118,8 @@ NTSTATUS:piix4_init()
         return STATUS_NOT_SUPPORTED;
 
     // Map MMIO space
-    new addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
-    if (addr == 0) {
+    new VA:addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
+    if (addr == NULL) {
         debug_print(''Failed to map MMIO space\n'');
         return STATUS_NOT_SUPPORTED;
     }
@@ -350,8 +350,8 @@ NTSTATUS:piix4_port_sel(port, &old_port)
     static reg_to_port[] = [0, 2, 3, 4];
 
     // Map MMIO space
-    new addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
-    if (addr == 0) {
+    new VA:addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
+    if (addr == NULL) {
         debug_print(''Failed to map MMIO space\n'');
         return STATUS_IO_DEVICE_ERROR;
     }

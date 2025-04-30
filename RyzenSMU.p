@@ -425,7 +425,7 @@ public NTSTATUS:ioctl_read_pm_table(in[], in_size, out[], out_size) {
         return STATUS_DEVICE_NOT_READY;
     new read_count = _min(out_size, PAGE_SIZE / 8);
     new read_size = read_count * 8;
-    new va = io_space_map(g_table_base, read_size);
+    new VA:va = io_space_map(g_table_base, read_size);
     new NTSTATUS:status = STATUS_SUCCESS;
     if (va) {
         new read;

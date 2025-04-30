@@ -144,10 +144,12 @@ public NTSTATUS:ioctl_read_smu(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
+#define KUSER_SHARED_DATA VA:0xFFFFF78000000000
+
 // KUSER_SHARED_DATA->TickCountQuad
 get_tick_count() {
     new value;
-    virtual_read_qword(0xFFFFF78000000000 + 0x0320, value);
+    virtual_read_qword(KUSER_SHARED_DATA + 0x0320, value);
     return value;
 }
 

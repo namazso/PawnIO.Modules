@@ -17,7 +17,7 @@
 
 #include <pawnio.inc>
 
-// Many parts of this was copied from the Chromium OS EC codebase.
+// Many parts of this was ported from the Chromium OS EC codebase.
 // See https://chromium.googlesource.com/chromiumos/platform/ec/
 
 /* I/O addresses for host command */
@@ -88,7 +88,7 @@ new memmap_addr;
 new ec_command_proto;
 
 
-wait_for_ec(const status_addr, const timeout_usec) {
+NTSTATUS:wait_for_ec(const status_addr, const timeout_usec) {
 	new delay = INITIAL_UDELAY;
 
 	for (new i = 0; i < timeout_usec; i += delay) {
@@ -104,7 +104,7 @@ wait_for_ec(const status_addr, const timeout_usec) {
 	return STATUS_TIMEOUT; /* Timeout */
 }
 
-ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indata[], insize) {
+NTSTATUS:ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indata[], insize) {
     new csum = 0;
     const rq_size = 1 + 1 + 2 + 1 + 1 + 2;
     const rs_size = 1 + 1 + 2 + 2 + 2;
@@ -203,7 +203,7 @@ ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indata[], insi
     return STATUS_SUCCESS;
 }
 
-ec_readmem_lpc(offset, bytes, dest[]) {
+NTSTATUS:ec_readmem_lpc(offset, bytes, dest[]) {
     if ((offset + bytes) >= EC_MEMMAP_SIZE)
         return STATUS_INVALID_PARAMETER;
 
@@ -221,7 +221,7 @@ ec_readmem_lpc(offset, bytes, dest[]) {
     return STATUS_SUCCESS;
 }
 
-comm_init_lpc() {
+NTSTATUS:comm_init_lpc() {
     new byte = 0xff;
 
     /*
@@ -270,8 +270,9 @@ comm_init_lpc() {
 
     return STATUS_SUCCESS;
 }
-forward ioctl_ec_command(in[], in_size, out[], out_size);
-public ioctl_ec_command(in[], in_size, out[], out_size) {
+
+forward NTSTATUS:ioctl_ec_command(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_ec_command(in[], in_size, out[], out_size) {
     if (in_size < 3 || out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -283,15 +284,14 @@ public ioctl_ec_command(in[], in_size, out[], out_size) {
         new out_size_offset = 1;
         new ec_out_size = out_size - out_size_offset;
 
-        new result = ec_command_lpc_3(command, version, in, ec_in_size, in_size_offset, out, ec_out_size);
-        return result;
+        return ec_command_lpc_3(command, version, in, ec_in_size, in_size_offset, out, ec_out_size);
     }
 
     return STATUS_NOT_SUPPORTED;
 }
 
-forward ioctl_ec_readmem(in[], in_size, out[], out_size);
-public ioctl_ec_readmem(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_ec_readmem(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_ec_readmem(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -299,13 +299,9 @@ public ioctl_ec_readmem(in[], in_size, out[], out_size) {
 
     new offset = in[0] & 0xFFFF;
 
-    new result = ec_readmem_lpc(offset, out_size, out);
-    return result;
+    return ec_readmem_lpc(offset, out_size, out);
 }
 
-main() {
-    if (comm_init_lpc())
-        return STATUS_NOT_SUPPORTED;
-    
-    return STATUS_SUCCESS;
+NTSTATUS:main() {
+    return comm_init_lpc();
 }

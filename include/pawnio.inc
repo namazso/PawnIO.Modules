@@ -33,7 +33,7 @@ stock bool:is_amd(vendor[4]) {
 ///
 /// @param vendor Vendor string from CPUID
 /// @return Whether the vendor is Intel
-stock is_intel(vendor[4]) {
+stock bool:is_intel(vendor[4]) {
     return vendor[1] == CHAR4_CONST('G', 'e', 'n', 'u') && vendor[3] == CHAR4_CONST('i', 'n', 'e', 'I') && vendor[2] == CHAR4_CONST('n', 't', 'e', 'l');
 }
 

@@ -26,8 +26,8 @@
 /// @param out Bitwise not of Value
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward ioctl_not(in[], in_size, out[], out_size);
-public ioctl_not(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_not(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_not(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
         return STATUS_INVALID_PARAMETER;
 
@@ -40,15 +40,15 @@ public ioctl_not(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-main() {
+NTSTATUS:main() {
     // Only calling one native in a module triggers some interpreter or compiler bug...
-    new arch = get_arch();
+    new CPUArch:arch = get_arch();
 
-    debug_print(''Echo module loaded! Arch: %d'', arch);
+    debug_print(''Echo module loaded! Arch: %d'', _:arch);
     return STATUS_SUCCESS;
 }
 
-public unload() {
+public NTSTATUS:unload() {
     debug_print(''Echo module unloaded!'');
     return STATUS_SUCCESS;
 }

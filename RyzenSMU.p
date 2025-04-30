@@ -50,7 +50,7 @@ const SMUStatus: {
     SMU_Failed = 0xFF
 };
 
-smu_status_to_nt(SMUStatus:s) {
+NTSTATUS:smu_status_to_nt(SMUStatus:s) {
     switch (s) {
         case SMU_OK:
             return STATUS_SUCCESS;
@@ -138,16 +138,16 @@ const SMU_PCI_DATA_REG = 0xC8;
 const SMU_REQ_MAX_ARGS = 6;
 const SMU_RETRIES_MAX = 8096;
 
-read_reg(addr, &data) {
-    new status = pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr);
+NTSTATUS:read_reg(addr, &data) {
+    new NTSTATUS:status = pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr);
     if (NT_SUCCESS(status)) {
         status = pci_config_read_dword(0, 0, 0, SMU_PCI_DATA_REG, data);
     }
     return status;
 }
 
-write_reg(addr, data) {
-    new status = pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr);
+NTSTATUS:write_reg(addr, data) {
+    new NTSTATUS:status = pci_config_write_dword(0, 0, 0, SMU_PCI_ADDR_REG, addr);
     if (NT_SUCCESS(status)) {
         status = pci_config_write_dword(0, 0, 0, SMU_PCI_DATA_REG, data);
     }
@@ -156,14 +156,14 @@ write_reg(addr, data) {
 
 new CodeName:g_code_name = CPU_Undefined;
 
-send_command(msg, args[SMU_REQ_MAX_ARGS]) {
+NTSTATUS:send_command(msg, args[SMU_REQ_MAX_ARGS]) {
     new addrinfo_idx = k_addridx[g_code_name];
     new addr_cmd = k_addrinfo[addrinfo_idx].cmd;
     new addr_rsp = k_addrinfo[addrinfo_idx].rsp;
     new addr_args = k_addrinfo[addrinfo_idx].args;
 
     new value = 0;
-    new status = STATUS_SUCCESS;
+    new NTSTATUS:status = STATUS_SUCCESS;
 
     // Step 1: Wait until the RSP register is non-zero.
     for (new i = 0; i < SMU_RETRIES_MAX; ++i) {
@@ -218,7 +218,7 @@ send_command(msg, args[SMU_REQ_MAX_ARGS]) {
     return STATUS_SUCCESS;
 }
 
-send_command2(msg, &a1=0, &a2=0, &a3=0, &a4=0, &a5=0, &a6=0) {
+NTSTATUS:send_command2(msg, &a1=0, &a2=0, &a3=0, &a4=0, &a5=0, &a6=0) {
     new args[SMU_REQ_MAX_ARGS];
     args[0] = a1;
     args[1] = a2;
@@ -226,7 +226,7 @@ send_command2(msg, &a1=0, &a2=0, &a3=0, &a4=0, &a5=0, &a6=0) {
     args[3] = a4;
     args[4] = a5;
     args[5] = a6;
-    new status = send_command(msg, args);
+    new NTSTATUS:status = send_command(msg, args);
     a1 = args[0];
     a2 = args[1];
     a3 = args[2];
@@ -236,7 +236,7 @@ send_command2(msg, &a1=0, &a2=0, &a3=0, &a4=0, &a5=0, &a6=0) {
     return status;
 }
 
-get_pm_table_version(&version) {
+NTSTATUS:get_pm_table_version(&version) {
     switch (g_code_name) {
         case CPU_RavenRidge, CPU_Picasso:
             return send_command2(0x0c, version);
@@ -252,7 +252,7 @@ get_pm_table_version(&version) {
     return STATUS_NOT_SUPPORTED;
 }
 
-transfer_table_to_dram() {
+NTSTATUS:transfer_table_to_dram() {
     new three = 3;
     switch (g_code_name) {
         case CPU_Raphael, CPU_GraniteRidge:
@@ -269,7 +269,7 @@ transfer_table_to_dram() {
     return STATUS_NOT_SUPPORTED;
 }
 
-get_pm_table_base(&base) {
+NTSTATUS:get_pm_table_base(&base) {
     base = 0;
     new class;
     new fn[3];
@@ -301,7 +301,7 @@ get_pm_table_base(&base) {
             return STATUS_NOT_SUPPORTED;
     }
     new args[6];
-    new status;
+    new NTSTATUS:status = STATUS_SUCCESS;
     switch (class) {
         case 1: {
             args[0] = 1;
@@ -376,12 +376,12 @@ new g_table_base;
 /// @param out_size Must be 2
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward ioctl_resolve_pm_table(in[], in_size, out[], out_size);
-public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_resolve_pm_table(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
     if (out_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     new version;
-    new status = get_pm_table_version(version);
+    new NTSTATUS:status = get_pm_table_version(version);
     if (!NT_SUCCESS(status))
         return status;
     debug_print(''RyzenSMU: PM Table Version: %x\n'', version);
@@ -407,8 +407,8 @@ public ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward ioctl_update_pm_table(in[], in_size, out[], out_size);
-public ioctl_update_pm_table(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_update_pm_table(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_update_pm_table(in[], in_size, out[], out_size) {
     return transfer_table_to_dram();
 }
 
@@ -419,14 +419,14 @@ public ioctl_update_pm_table(in[], in_size, out[], out_size) {
 /// @param out Unused
 /// @param out_size Unused
 /// @return An NTSTATUS
-forward ioctl_read_pm_table(in[], in_size, out[], out_size);
-public ioctl_read_pm_table(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_pm_table(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_pm_table(in[], in_size, out[], out_size) {
     if (!g_table_base)
         return STATUS_DEVICE_NOT_READY;
     new read_count = _min(out_size, PAGE_SIZE / 8);
     new read_size = read_count * 8;
     new va = io_space_map(g_table_base, read_size);
-    new status = STATUS_SUCCESS;
+    new NTSTATUS:status = STATUS_SUCCESS;
     if (va) {
         new read;
         for (new i = 0; i < read_count; ++i) {
@@ -438,7 +438,7 @@ public ioctl_read_pm_table(in[], in_size, out[], out_size) {
 
         io_space_unmap(va, read_size);
     } else {
-        status = STATUS_UNSUCCESSFUL;
+        status = STATUS_COMMITMENT_LIMIT;
     }
 
     return status;
@@ -451,8 +451,8 @@ public ioctl_read_pm_table(in[], in_size, out[], out_size) {
 /// @param out [0] = Code name integer
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward ioctl_get_code_name(in[], in_size, out[], out_size);
-public ioctl_get_code_name(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_get_code_name(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_get_code_name(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -468,14 +468,14 @@ public ioctl_get_code_name(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward ioctl_get_smu_version(in[], in_size, out[], out_size);
-public ioctl_get_smu_version(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_get_smu_version(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_get_smu_version(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
     new args[6];
     args[0] = 1;
-    new status = send_command(0x02, args);
+    new NTSTATUS:status = send_command(0x02, args);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -483,7 +483,7 @@ public ioctl_get_smu_version(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-main() {
+NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
@@ -513,9 +513,9 @@ main() {
         return STATUS_NOT_SUPPORTED;
 
     new didvid;
-    new status = pci_config_read_dword(0, 0, 0, 0, didvid);
+    new NTSTATUS:status = pci_config_read_dword(0, 0, 0, 0, didvid);
     if (!NT_SUCCESS(status))
-        return STATUS_NOT_SUPPORTED;
+        return status;
 
     debug_print(''RyzenSMU: code_name: %x vid: %x did: %x\n'', _:code_name, didvid & 0xFFFF, (didvid >> 16) & 0xFFFF);
 

@@ -212,9 +212,9 @@ new pci_devices[] = [
 new pci_addr[3];
 new i801_smba;
 
-i801_init()
+NTSTATUS:i801_init()
 {
-    new status;
+    new NTSTATUS:status;
     new pci_config;
     new bool:found = false;
 
@@ -272,8 +272,8 @@ i801_get_block_len()
     return len;
 }
 
-/* Make sure the SMBus host is ready to start transmitting. */
-i801_check_pre()
+// Make sure the SMBus host is ready to start transmitting.
+NTSTATUS:i801_check_pre()
 {
     new hststs;
 
@@ -294,20 +294,18 @@ i801_check_pre()
 
 i801_check_post(hststs)
 {
-    new status = STATUS_SUCCESS;
+    new NTSTATUS:status = STATUS_SUCCESS;
 
-    /*
-     * If the SMBus is still busy, we give up
-     */
+    // If the SMBus is still busy, we give up
     if (!NT_SUCCESS(hststs)) {
         status = hststs;
 
-        /* try to stop the current command */
+        // try to stop the current command
         io_out_byte(SMBHSTCNT, SMBHSTCNT_KILL);
         microsleep(1000);
         io_out_byte(SMBHSTCNT, 0);
 
-        /* Check if it worked */
+        // Check if it worked
         hststs = io_in_byte(SMBHSTSTS);
         if ((hststs & SMBHSTSTS_HOST_BUSY) ||
             !(hststs & SMBHSTSTS_FAILED))
@@ -411,7 +409,7 @@ cleanup:
     return ret;
 }
 
-i801_set_hstadd(addr, read_write)
+void:i801_set_hstadd(addr, read_write)
 {
     io_out_byte(SMBHSTADD, ((addr & 0x7f) << 1) | (read_write & 0x01));
 }
@@ -485,7 +483,7 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, &out)
     return 0;
 }
 
-i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33])
+NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33])
 {
     if (read_write == I2C_SMBUS_READ && command == I2C_SMBUS_BLOCK_DATA)
         /* Mark block length as invalid */
@@ -507,7 +505,7 @@ i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33])
     return i801_block_transaction_by_block(read_write, command, in, out);
 }
 
-i801_inuse(bool:inuse)
+NTSTATUS:i801_inuse(bool:inuse)
 {
     if (inuse) {
         // Wait for device to be unlocked by BIOS/ACPI
@@ -525,18 +523,16 @@ i801_inuse(bool:inuse)
         }
         return STATUS_SUCCESS;
     } else {
-        /*
-        * Unlock the SMBus device for use by BIOS/ACPI,
-        * and clear status flags if not done already.
-        */
+        // Unlock the SMBus device for use by BIOS/ACPI, and clear status flags
+        // if not done already.
         io_out_byte(SMBHSTSTS, SMBHSTSTS_INUSE_STS | STATUS_FLAGS);
         return STATUS_SUCCESS;
     }
 }
 
-i801_access_simple(addr, read_write, command, size, in, &out)
+NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
 {
-    new status, hststs;
+    new NTSTATUS:status, hststs;
 
     status = i801_inuse(true);
     if (!NT_SUCCESS(status))
@@ -567,9 +563,9 @@ unlock:
     return status;
 }
 
-i801_access_block(addr, read_write, command, size, in[33], out[33])
+NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
 {
-    new status, hststs;
+    new NTSTATUS:status, hststs;
 
     status = i801_inuse(true);
     if (!NT_SUCCESS(status))
@@ -613,8 +609,8 @@ unlock:
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_write_quick(in[], in_size, out[], out_size);
-public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_write_quick(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -639,8 +635,8 @@ public ioctl_i801_write_quick(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_read_byte(in[], in_size, out[], out_size);
-public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_read_byte(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_read_byte(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -664,8 +660,8 @@ public ioctl_i801_read_byte(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_write_byte(in[], in_size, out[], out_size);
-public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_write_byte(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -689,8 +685,8 @@ public ioctl_i801_write_byte(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_read_byte_data(in[], in_size, out[], out_size);
-public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_read_byte_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -714,8 +710,8 @@ public ioctl_i801_read_byte_data(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_write_byte_data(in[], in_size, out[], out_size);
-public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_write_byte_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -740,8 +736,8 @@ public ioctl_i801_write_byte_data(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_read_word_data(in[], in_size, out[], out_size);
-public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_read_word_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -765,8 +761,8 @@ public ioctl_i801_read_word_data(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_write_word_data(in[], in_size, out[], out_size);
-public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_write_word_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -791,8 +787,8 @@ public ioctl_i801_write_word_data(in[], in_size, out[], out_size) {
 /// @param out_size Must be 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_read_block_data(in[], in_size, out[], out_size);
-public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_read_block_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 5)
@@ -804,7 +800,7 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
     new unused[I2C_SMBUS_BLOCK_MAX + 1];
     new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 
-    new status = i801_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
+    new NTSTATUS:status = i801_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
 
     if (!NT_SUCCESS(status))
         return status;
@@ -827,8 +823,8 @@ public ioctl_i801_read_block_data(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_write_block_data(in[], in_size, out[], out_size);
-public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_write_block_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 7)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -860,8 +856,8 @@ public ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_process_call(in[], in_size, out[], out_size);
-public ioctl_i801_process_call(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_process_call(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_process_call(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -890,8 +886,8 @@ public ioctl_i801_process_call(in[], in_size, out[], out_size) {
 /// @param out_size Must be 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_i801_block_process_call(in[], in_size, out[], out_size);
-public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_i801_block_process_call(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     if (in_size < 7)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 5)
@@ -910,7 +906,7 @@ public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
 
     new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 
-    new status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out_data);
+    new NTSTATUS:status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out_data);
 
     if (!NT_SUCCESS(status))
         return status;
@@ -921,6 +917,6 @@ public ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     return status;
 }
 
-main() {
+NTSTATUS:main() {
     return i801_init();
 }

@@ -53,7 +53,7 @@ stock _max(a, b) {
 /// @param size Count of bytes to unpack
 /// @param src_offs Source offset, in bytes
 /// @param dst_offs Destination offset, in cells
-stock unpack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
+stock void:unpack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
     for (new i = 0; i < size; i++) {
         new src_idx = src_offs + i;
         new src_cell = src[src_idx / 8];
@@ -69,7 +69,7 @@ stock unpack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
 /// @param size Count of bytes to pack
 /// @param src_offs Source offset, in cells
 /// @param dst_offs Destination offset, in bytes
-stock pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
+stock void:pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
     for (new i = 0; i < size; i++) {
         new byte = src[src_offs + i] & 0xff;
         new dst_idx = dst_offs + i;
@@ -79,4 +79,4 @@ stock pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
 }
 
 /// Executed on module unload.
-forward unload();
+forward NTSTATUS:unload();

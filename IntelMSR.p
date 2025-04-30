@@ -71,8 +71,8 @@ bool:is_allowed_msr_read(msr) {
 /// @param out [0] = Value read
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward ioctl_read_msr(in[], in_size, out[], out_size);
-public ioctl_read_msr(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
         return STATUS_INVALID_PARAMETER;
 
@@ -82,14 +82,14 @@ public ioctl_read_msr(in[], in_size, out[], out_size) {
         return STATUS_ACCESS_DENIED;
         
     new value = 0;
-    new status = msr_read(msr, value);
+    new NTSTATUS:status = msr_read(msr, value);
 
     out[0] = value;
 
     return status;
 }
 
-main() {
+NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 

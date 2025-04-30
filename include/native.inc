@@ -21,19 +21,19 @@
 ///
 /// @param fmt Format string, only integers are supported
 /// @param ... Arguments to format string
-native debug_print(const fmt[], ...);
+native NTSTATUS:debug_print(const fmt[], ...);
+
+const CPUArch: {
+    ARCH_X64 = 1,
+    ARCH_A64 = 2
+};
 
 /// Get the current architecture.
 ///
 /// @return The current architecture
 /// @retval ARCH_X64 x86-64
 /// @retval ARCH_A64 ARM64
-native get_arch();
-
-const {
-    ARCH_X64 = 1,
-    ARCH_A64 = 2
-};
+native CPUArch:get_arch();
 
 /// Get total CPU count.
 /// @return CPU count
@@ -43,34 +43,36 @@ native cpu_count();
 ///
 /// @param which Which CPU to pin to
 /// @param old Old affinity, for restoring later
+/// @return An NTSTATUS
 /// @warning Only takes effect on passive IRQL / interrupts enabled
-native cpu_set_affinity(which, old[2]);
+native NTSTATUS:cpu_set_affinity(which, old[2]);
 
 /// Restore affinity.
 ///
 /// @param old Old affinity to restore
+/// @return An NTSTATUS
 /// @warning Only takes effect on passive IRQL / interrupts enabled
-native cpu_restore_affinity(old[2]);
+native NTSTATUS:cpu_restore_affinity(old[2]);
 
 /// Read MSR.
 ///
 /// @param msr MSR Index
 /// @param value Output value
 /// @return An NTSTATUS
-native msr_read(msr, &value);
+native NTSTATUS:msr_read(msr, &value);
 
 /// Write MSR.
 ///
 /// @param msr MSR Index
 /// @param value New value
 /// @return An NTSTATUS
-native msr_write(msr, value);
+native NTSTATUS:msr_write(msr, value);
 
 /// Disable interrupts, effectively raises IRQL to maximum.
-native interrupts_disable();
+native void:interrupts_disable();
 
 /// Enable interrupts.
-native interrupts_enable();
+native void:interrupts_enable();
 
 /// Read a byte from physical memory.
 ///
@@ -78,7 +80,7 @@ native interrupts_enable();
 /// @param value Value read
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_read_byte(pa, &value);
+native NTSTATUS:physical_read_byte(pa, &value);
 
 /// Read a word from physical memory.
 ///
@@ -86,7 +88,7 @@ native physical_read_byte(pa, &value);
 /// @param value Value read
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_read_word(pa, &value);
+native NTSTATUS:physical_read_word(pa, &value);
 
 /// Read a double word from physical memory.
 ///
@@ -94,7 +96,7 @@ native physical_read_word(pa, &value);
 /// @param value Value read
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_read_dword(pa, &value);
+native NTSTATUS:physical_read_dword(pa, &value);
 
 /// Read a quad word from physical memory.
 ///
@@ -102,7 +104,7 @@ native physical_read_dword(pa, &value);
 /// @param value Value read
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_read_qword(pa, &value);
+native NTSTATUS:physical_read_qword(pa, &value);
 
 /// Write a byte to physical memory.
 ///
@@ -110,7 +112,7 @@ native physical_read_qword(pa, &value);
 /// @param value Value to write
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_write_byte(pa, value);
+native NTSTATUS:physical_write_byte(pa, value);
 
 /// Write a word to physical memory.
 ///
@@ -118,7 +120,7 @@ native physical_write_byte(pa, value);
 /// @param value Value to write
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_write_word(pa, value);
+native NTSTATUS:physical_write_word(pa, value);
 
 /// Write a double word to physical memory.
 ///
@@ -126,7 +128,7 @@ native physical_write_word(pa, value);
 /// @param value Value to write
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_write_dword(pa, value);
+native NTSTATUS:physical_write_dword(pa, value);
 
 /// Write a quad word to physical memory.
 ///
@@ -134,15 +136,17 @@ native physical_write_dword(pa, value);
 /// @param value Value to write
 /// @return An NTSTATUS
 /// @note Only works on ranges already mapped by the kernel
-native physical_write_qword(pa, value);
+native NTSTATUS:physical_write_qword(pa, value);
 
 /// Map IO space.
 ///
 /// Map physical memory to virtual, which can be accessed by the `virtual_*`
-///   family of functions.
+/// family of functions.
 ///
 /// @param pa Physical address, page aligned
 /// @param size Size to map, page aligned
+/// @return Virtual address
+/// @retval 0 Mapping failed, not enough VA space
 /// @warning The mapping is a resource that must be freed (unmapped)
 native io_space_map(pa, size);
 
@@ -150,63 +154,63 @@ native io_space_map(pa, size);
 ///
 /// @param pa Physical address, page aligned
 /// @param size Size to unmap, page aligned
-native io_space_unmap(va, size);
+native void:io_space_unmap(va, size);
 
 /// Read a byte from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native virtual_read_byte(va, &value);
+native NTSTATUS:virtual_read_byte(va, &value);
 
 /// Read a word from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native virtual_read_word(va, &value);
+native NTSTATUS:virtual_read_word(va, &value);
 
 /// Read a double word from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native virtual_read_dword(va, &value);
+native NTSTATUS:virtual_read_dword(va, &value);
 
 /// Read a quad word from virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value read
 /// @return An NTSTATUS
-native virtual_read_qword(va, &value);
+native NTSTATUS:virtual_read_qword(va, &value);
 
 /// Write a byte to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native virtual_write_byte(va, value);
+native NTSTATUS:virtual_write_byte(va, value);
 
 /// Write a word to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native virtual_write_word(va, value);
+native NTSTATUS:virtual_write_word(va, value);
 
 /// Write a double word to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native virtual_write_dword(va, value);
+native NTSTATUS:virtual_write_dword(va, value);
 
 /// Write a quad word to virtual memory.
 ///
 /// @param va Virtual address
 /// @param value Value to write
 /// @return An NTSTATUS
-native virtual_write_qword(va, value);
+native NTSTATUS:virtual_write_qword(va, value);
 
 // These are broken and don't return the result of the operation
 //native virtual_cmpxchg_byte(va, exchange, comparand);
@@ -235,7 +239,7 @@ native virtual_free(va);
 /// @param offset Byte offset
 /// @param value Output value
 /// @return An NTSTATUS
-native pci_config_read_byte(bus, device, function, offset, &value);
+native NTSTATUS:pci_config_read_byte(bus, device, function, offset, &value);
 
 /// Read a word from PCI configuration space.
 ///
@@ -245,7 +249,7 @@ native pci_config_read_byte(bus, device, function, offset, &value);
 /// @param offset Byte offset
 /// @param value Output value
 /// @return An NTSTATUS
-native pci_config_read_word(bus, device, function, offset, &value);
+native NTSTATUS:pci_config_read_word(bus, device, function, offset, &value);
 
 /// Read a double word from PCI configuration space.
 ///
@@ -255,7 +259,7 @@ native pci_config_read_word(bus, device, function, offset, &value);
 /// @param offset Byte offset
 /// @param value Output value
 /// @return An NTSTATUS
-native pci_config_read_dword(bus, device, function, offset, &value);
+native NTSTATUS:pci_config_read_dword(bus, device, function, offset, &value);
 
 /// Read a quad word from PCI configuration space.
 ///
@@ -265,7 +269,7 @@ native pci_config_read_dword(bus, device, function, offset, &value);
 /// @param offset Byte offset
 /// @param value Output value
 /// @return An NTSTATUS
-native pci_config_read_qword(bus, device, function, offset, &value);
+native NTSTATUS:pci_config_read_qword(bus, device, function, offset, &value);
 
 /// Write a byte to PCI configuration space.
 ///
@@ -275,7 +279,7 @@ native pci_config_read_qword(bus, device, function, offset, &value);
 /// @param offset Byte offset
 /// @param value Value to write
 /// @return An NTSTATUS
-native pci_config_write_byte(bus, device, function, offset, value);
+native NTSTATUS:pci_config_write_byte(bus, device, function, offset, value);
 
 /// Write a word to PCI configuration space.
 ///
@@ -285,7 +289,7 @@ native pci_config_write_byte(bus, device, function, offset, value);
 /// @param offset Byte offset
 /// @param value Value to write
 /// @return An NTSTATUS
-native pci_config_write_word(bus, device, function, offset, value);
+native NTSTATUS:pci_config_write_word(bus, device, function, offset, value);
 
 /// Write a double word to PCI configuration space.
 ///
@@ -295,7 +299,7 @@ native pci_config_write_word(bus, device, function, offset, value);
 /// @param offset Byte offset
 /// @param value Value to write
 /// @return An NTSTATUS
-native pci_config_write_dword(bus, device, function, offset, value);
+native NTSTATUS:pci_config_write_dword(bus, device, function, offset, value);
 
 /// Write a quad word to PCI configuration space.
 ///
@@ -305,11 +309,13 @@ native pci_config_write_dword(bus, device, function, offset, value);
 /// @param offset Byte offset
 /// @param value Value to write
 /// @return An NTSTATUS
-native pci_config_write_qword(bus, device, function, offset, value);
+native NTSTATUS:pci_config_write_qword(bus, device, function, offset, value);
 
 /// Get virtual address of a kernel function.
 ///
 /// @param name Function name
+/// @return Virtual address of function
+/// @retval 0 Function not found
 native get_proc_address(name[]);
 
 /// Invoke an arbitrary function pointer.
@@ -333,12 +339,13 @@ native get_proc_address(name[]);
 /// @param a14 Parameter to pass through
 /// @param a15 Parameter to pass through
 /// @return NTSTATUS of any exception that occurred, or STATUS_SUCCESS
-native invoke(address, &retval, a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0, a8=0, a9=0, a10=0, a11=0, a12=0, a13=0, a14=0, a15=0);
+native NTSTATUS:invoke(address, &retval, a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0, a8=0, a9=0, a10=0, a11=0, a12=0, a13=0, a14=0, a15=0);
 
 /// Sleep.
 ///
 /// @param us Microseconds to sleep
-native microsleep(us);
+/// @return An NTSTATUS
+native NTSTATUS:microsleep(us);
 
 /// Invoke DELL SMM.
 ///
@@ -393,7 +400,7 @@ native io_in_dword(port);
 /// @param leaf Passed in eax
 /// @param subleaf Passed in ecx
 /// @param out Output eax, ebc, ecx, edx
-native cpuid(leaf, subleaf, out[4]);
+native void:cpuid(leaf, subleaf, out[4]);
 
 /// Read control register.
 ///
@@ -405,7 +412,7 @@ native cr_read(cr);
 ///
 /// @param cr Control register number to write
 /// @param value Value to write
-native cr_write(cr, value);
+native void:cr_write(cr, value);
 
 /// Read debug register.
 ///
@@ -417,14 +424,14 @@ native dr_read(dr);
 ///
 /// @param dr Debug register number to write
 /// @param value Value to write
-native dr_write(dr, value);
+native void:dr_write(dr, value);
 
 /// Read extended control register.
 ///
 /// @param xcr Extended control register number to read
 /// @param value Value read
 /// @return An NTSTATUS
-native xcr_read(xcr, &value);
+native NTSTATUS:xcr_read(xcr, &value);
 
 
 /// Write control register.
@@ -432,25 +439,25 @@ native xcr_read(xcr, &value);
 /// @param cr Control register number to write
 /// @param value Value to write
 /// @return An NTSTATUS
-native xcr_write(xcr, value);
+native NTSTATUS:xcr_write(xcr, value);
 
 /// Invalidate TLB.
 ///
 /// @param va Virtual address
-native invlpg(va);
+native void:invlpg(va);
 
 /// Invalidate TLB for PCID.
 ///
 /// @param type Type
 /// @param descriptor Pointer to descriptor
-native invpcid(type, descriptor);
+native void:invpcid(type, descriptor);
 
 /// Read performance counter.
 ///
 /// @param pmc Performance counter to read
 /// @param value Value read
 /// @return An NTSTATUS
-native readpmc(pmc, value);
+native NTSTATUS:readpmc(pmc, value);
 
 /// Read TSC.
 ///
@@ -479,25 +486,25 @@ native rdseed(&v);
 ///
 /// @param limit Limit
 /// @param base Base
-native lidt(limit, base);
+native void:lidt(limit, base);
 
 /// Store IDT.
 ///
 /// @param limit Limit
 /// @param base Base
-native sidt(&limit, &base);
+native void:sidt(&limit, &base);
 
 /// Load GDT.
 ///
 /// @param limit Limit
 /// @param base Base
-native lgdt(limit, base);
+native void:lgdt(limit, base);
 
 /// Store GDT.
 ///
 /// @param limit Limit
 /// @param base Base
-native sgdt(&limit, &base);
+native void:sgdt(&limit, &base);
 
 /// Read MXCSR.
 ///
@@ -507,25 +514,25 @@ native mxcsr_read();
 /// Write MXCSR.
 ///
 /// @param v MXCSR
-native mxcsr_write(v);
+native void:mxcsr_write(v);
 
 /// Set AC in EFLAGS.
-native stac();
+native void:stac();
 
 /// Clear AC in EFLAGS.
-native clac();
+native void:clac();
 
 /// Invoke HALT.
-native halt();
+native void:halt();
 
 /// Invoke UD2.
-native ud2();
+native void:ud2();
 
 /// Invoke INT3.
-native int3();
+native void:int3();
 
 /// Invoke INT 2C.
-native int2c();
+native void:int2c();
 
 /// Write Back and Invalidate Cache.
-native wbinvd();
+native void:wbinvd();

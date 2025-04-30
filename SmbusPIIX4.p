@@ -85,9 +85,9 @@
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
 
-piix4_init()
+NTSTATUS:piix4_init()
 {
-    new status;
+    new NTSTATUS:status;
 
     // Check that a PCI device at 00:14.0 exists and is an AMD SMBus controller
     new dev_vid;
@@ -167,10 +167,10 @@ unmap:
     return STATUS_SUCCESS;
 }
 
-piix4_transaction()
+NTSTATUS:piix4_transaction()
 {
     new temp;
-    new status = STATUS_SUCCESS;
+    new NTSTATUS:status = STATUS_SUCCESS;
     new timeout = 0;
 
     /* Make sure the SMBus host is ready to start transmitting */
@@ -228,9 +228,9 @@ piix4_transaction()
     return status;
 }
 
-piix4_access_simple(addr, read_write, command, size, in, &out)
+NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
 {
-    new status;
+    new NTSTATUS:status;
 
     switch (size) {
     case I2C_SMBUS_QUICK:
@@ -292,7 +292,7 @@ piix4_access_simple(addr, read_write, command, size, in, &out)
     return STATUS_SUCCESS;
 }
 
-piix4_access_block(addr, read_write, command, size, in[33], out[33])
+NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
 {
     switch (size) {
     case I2C_SMBUS_BLOCK_DATA:
@@ -320,7 +320,7 @@ piix4_access_block(addr, read_write, command, size, in[33], out[33])
 
     io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
 
-    new status = piix4_transaction();
+    new NTSTATUS:status = piix4_transaction();
     if (!NT_SUCCESS(status))
         return status;
 
@@ -342,9 +342,9 @@ piix4_access_block(addr, read_write, command, size, in[33], out[33])
     return STATUS_SUCCESS;
 }
 
-piix4_port_sel(port, &old_port)
+NTSTATUS:piix4_port_sel(port, &old_port)
 {
-    new status = STATUS_SUCCESS;
+    new NTSTATUS:status = STATUS_SUCCESS;
 
     static port_to_reg[] = [0b00, 0b00, 0b01, 0b10, 0b11];
     static reg_to_port[] = [0, 2, 3, 4];
@@ -401,8 +401,8 @@ unmap:
 /// @warning Changing to port 2, 3, or 4 may break other software expecting to be using port 0
 /// @note Port 1 uses a different base address, and should not break other software expecting another port
 /// @note Ports 3 and 4 are marked as reserved in the datasheet, use at your own risk
-forward ioctl_piix4_port_sel(in[], in_size, out[], out_size);
-public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (in_size < 1)
@@ -413,7 +413,7 @@ public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     new old_addr = piix4_smba;
     new old_port = 0;
 
-    new status = STATUS_SUCCESS;
+    new NTSTATUS:status = STATUS_SUCCESS;
 
     switch (new_port) {
     case -1, 0, 2, 3, 4:
@@ -452,8 +452,8 @@ public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_write_quick(in[], in_size, out[], out_size);
-public ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_write_quick(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -478,8 +478,8 @@ public ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_read_byte(in[], in_size, out[], out_size);
-public ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_read_byte(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -503,8 +503,8 @@ public ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_write_byte(in[], in_size, out[], out_size);
-public ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_write_byte(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -528,8 +528,8 @@ public ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_read_byte_data(in[], in_size, out[], out_size);
-public ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_read_byte_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -553,8 +553,8 @@ public ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_write_byte_data(in[], in_size, out[], out_size);
-public ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_write_byte_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -579,8 +579,8 @@ public ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_read_word_data(in[], in_size, out[], out_size);
-public ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_read_word_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -604,8 +604,8 @@ public ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_write_word_data(in[], in_size, out[], out_size);
-public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_write_word_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -630,8 +630,8 @@ public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
 /// @param out_size Must be 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_read_block_data(in[], in_size, out[], out_size);
-public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_read_block_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 5)
@@ -643,7 +643,7 @@ public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
     new unused[I2C_SMBUS_BLOCK_MAX + 1];
     new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 
-    new status = piix4_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
+    new NTSTATUS:status = piix4_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
 
     if (!NT_SUCCESS(status))
         return status;
@@ -666,8 +666,8 @@ public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward ioctl_piix4_write_block_data(in[], in_size, out[], out_size);
-public ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_piix4_write_block_data(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 7)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -686,6 +686,6 @@ public ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
     return piix4_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, unused);
 }
 
-main() {
+NTSTATUS:main() {
     return piix4_init();
 }

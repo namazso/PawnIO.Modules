@@ -9,7 +9,7 @@
 //  This library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-//  Lesser General Public License for more details.
+//  Lesser General Public License for more detaiNTSTATUS:ls.
 //
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
@@ -50,8 +50,8 @@ bool:is_allowed_msr_read(msr) {
 /// @param out [0] = Value read
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward ioctl_read_msr(in[], in_size, out[], out_size);
-public ioctl_read_msr(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
         return STATUS_INVALID_PARAMETER;
 
@@ -61,7 +61,7 @@ public ioctl_read_msr(in[], in_size, out[], out_size) {
         return STATUS_ACCESS_DENIED;
         
     new value = 0;
-    new status = msr_read(msr, value);
+    new NTSTATUS:status = msr_read(msr, value);
 
     out[0] = value;
 
@@ -76,8 +76,8 @@ public ioctl_read_msr(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward ioctl_get_thermtrip(in[], in_size, out[], out_size);
-public ioctl_get_thermtrip(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_get_thermtrip(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_get_thermtrip(in[], in_size, out[], out_size) {
     if (in_size < 2 || out_size < 1)
         return STATUS_INVALID_PARAMETER;
 
@@ -91,7 +91,7 @@ public ioctl_get_thermtrip(in[], in_size, out[], out_size) {
     new device = PCI_BASE_DEVICE + cpu_idx;
     
     new didvid;
-    new status = pci_config_read_dword(PCI_BUS, device, MISCELLANEOUS_CONTROL_FUNCTION, 0, didvid);
+    new NTSTATUS:status = pci_config_read_dword(PCI_BUS, device, MISCELLANEOUS_CONTROL_FUNCTION, 0, didvid);
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
     
@@ -115,7 +115,7 @@ public ioctl_get_thermtrip(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-main() {
+NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 

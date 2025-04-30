@@ -48,7 +48,7 @@ resolve_cstates_io_offset() {
     // we only read from PCI so no need for locking
 
     new didvid;
-    new status = pci_config_read_dword(0, 20, 0, 0, didvid);
+    new NTSTATUS:status = pci_config_read_dword(0, 20, 0, 0, didvid);
     if (!NT_SUCCESS(status))
         return;
     if (didvid == 0x780B1022 || didvid == 0x790B1022) {
@@ -65,8 +65,8 @@ resolve_cstates_io_offset() {
 }
 
 // This should probably have an associated mutant?
-forward ioctl_read_cstate_residency(in[], in_size, out[], out_size);
-public ioctl_read_cstate_residency(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_cstate_residency(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_cstate_residency(in[], in_size, out[], out_size) {
     if (in_size != 0 || out_size != 2)
         return STATUS_INVALID_PARAMETER;
     if (g_cstates_io_offset == 0)
@@ -89,8 +89,8 @@ bool:is_allowed_miscctl_offset(didvid, offset) {
     return false;
 }
 
-forward ioctl_read_miscctl(in[], in_size, out[], out_size);
-public ioctl_read_miscctl(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_miscctl(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_miscctl(in[], in_size, out[], out_size) {
     if (in_size != 2 || out_size != 1)
         return STATUS_INVALID_PARAMETER;
 
@@ -98,7 +98,7 @@ public ioctl_read_miscctl(in[], in_size, out[], out_size) {
     new offset = in[1];
 
     new didvid;
-    new status = pci_config_read_dword(PCI_BUS, PCI_BASE_DEVICE + cpu_idx, PCI_MISCCTL_FUNCTION, 0, didvid);
+    new NTSTATUS:status = pci_config_read_dword(PCI_BUS, PCI_BASE_DEVICE + cpu_idx, PCI_MISCCTL_FUNCTION, 0, didvid);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -116,8 +116,8 @@ public ioctl_read_miscctl(in[], in_size, out[], out_size) {
 }
 
 /// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward ioctl_read_smu(in[], in_size, out[], out_size);
-public ioctl_read_smu(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_smu(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_smu(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
         return STATUS_INVALID_PARAMETER;
     
@@ -130,7 +130,7 @@ public ioctl_read_smu(in[], in_size, out[], out_size) {
     if (offset != SMU_REPORTED_TEMP_CTRL_OFFSET)
         return STATUS_ACCESS_DENIED;
 
-    new status = pci_config_write_dword(PCI_BUS, 0, 0, 0xB8, offset);
+    new NTSTATUS:status = pci_config_write_dword(PCI_BUS, 0, 0, 0xB8, offset);
     if (!NT_SUCCESS(status))
         return status;
     
@@ -151,8 +151,8 @@ get_tick_count() {
     return value;
 }
 
-forward ioctl_measure_tsc_multiplier(in[], in_size, out[], out_size);
-public ioctl_measure_tsc_multiplier(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_measure_tsc_multiplier(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_measure_tsc_multiplier(in[], in_size, out[], out_size) {
     if (out_size != 2)
         return STATUS_INVALID_PARAMETER;
 
@@ -227,8 +227,8 @@ bool:is_allowed_msr_read(msr) {
     return false;
 }
 
-forward ioctl_read_msr(in[], in_size, out[], out_size);
-public ioctl_read_msr(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size) {
     if (in_size != 1 || out_size != 1)
         return STATUS_INVALID_PARAMETER;
 
@@ -238,14 +238,14 @@ public ioctl_read_msr(in[], in_size, out[], out_size) {
         return STATUS_ACCESS_DENIED;
         
     new value = 0;
-    new status = msr_read(msr, value);
+    new NTSTATUS:status = msr_read(msr, value);
 
     out[0] = value;
 
     return status;
 }
 
-main() {
+NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 

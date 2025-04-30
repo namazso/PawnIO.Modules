@@ -20,7 +20,7 @@
 #include <pawnio.inc>
 
 // PawnIO i801 Driver
-// Many parts of this was copied from the Linux kernel codebase.
+// Many parts of this was ported from the Linux kernel codebase.
 // See https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/i2c/busses/i2c-i801.c
 
 #define PCI_VENDOR_ID_INTEL 0x8086

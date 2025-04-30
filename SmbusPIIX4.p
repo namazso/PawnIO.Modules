@@ -18,7 +18,7 @@
 #include <pawnio.inc>
 
 // PawnIO PIIX4 Driver
-// Many parts of this was copied from the Linux kernel codebase.
+// Many parts of this was ported from the Linux kernel codebase.
 // See https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/i2c/busses/i2c-piix4.c
 
 #define PCI_VENDOR_ID_AMD					0x1022

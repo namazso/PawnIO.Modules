@@ -69,10 +69,10 @@ native NTSTATUS:msr_read(msr, &value);
 native NTSTATUS:msr_write(msr, value);
 
 /// Disable interrupts, effectively raises IRQL to maximum.
-native void:interrupts_disable();
+native Void:interrupts_disable();
 
 /// Enable interrupts.
-native void:interrupts_enable();
+native Void:interrupts_enable();
 
 /// Read a byte from physical memory.
 ///
@@ -154,7 +154,7 @@ native io_space_map(pa, size);
 ///
 /// @param pa Physical address, page aligned
 /// @param size Size to unmap, page aligned
-native void:io_space_unmap(va, size);
+native Void:io_space_unmap(va, size);
 
 /// Read a byte from virtual memory.
 ///
@@ -400,7 +400,7 @@ native io_in_dword(port);
 /// @param leaf Passed in eax
 /// @param subleaf Passed in ecx
 /// @param out Output eax, ebc, ecx, edx
-native void:cpuid(leaf, subleaf, out[4]);
+native Void:cpuid(leaf, subleaf, out[4]);
 
 /// Read control register.
 ///
@@ -412,7 +412,7 @@ native cr_read(cr);
 ///
 /// @param cr Control register number to write
 /// @param value Value to write
-native void:cr_write(cr, value);
+native Void:cr_write(cr, value);
 
 /// Read debug register.
 ///
@@ -424,7 +424,7 @@ native dr_read(dr);
 ///
 /// @param dr Debug register number to write
 /// @param value Value to write
-native void:dr_write(dr, value);
+native Void:dr_write(dr, value);
 
 /// Read extended control register.
 ///
@@ -444,13 +444,13 @@ native NTSTATUS:xcr_write(xcr, value);
 /// Invalidate TLB.
 ///
 /// @param va Virtual address
-native void:invlpg(va);
+native Void:invlpg(va);
 
 /// Invalidate TLB for PCID.
 ///
 /// @param type Type
 /// @param descriptor Pointer to descriptor
-native void:invpcid(type, descriptor);
+native Void:invpcid(type, descriptor);
 
 /// Read performance counter.
 ///
@@ -486,25 +486,25 @@ native rdseed(&v);
 ///
 /// @param limit Limit
 /// @param base Base
-native void:lidt(limit, base);
+native Void:lidt(limit, base);
 
 /// Store IDT.
 ///
 /// @param limit Limit
 /// @param base Base
-native void:sidt(&limit, &base);
+native Void:sidt(&limit, &base);
 
 /// Load GDT.
 ///
 /// @param limit Limit
 /// @param base Base
-native void:lgdt(limit, base);
+native Void:lgdt(limit, base);
 
 /// Store GDT.
 ///
 /// @param limit Limit
 /// @param base Base
-native void:sgdt(&limit, &base);
+native Void:sgdt(&limit, &base);
 
 /// Read MXCSR.
 ///
@@ -514,25 +514,25 @@ native mxcsr_read();
 /// Write MXCSR.
 ///
 /// @param v MXCSR
-native void:mxcsr_write(v);
+native Void:mxcsr_write(v);
 
 /// Set AC in EFLAGS.
-native void:stac();
+native Void:stac();
 
 /// Clear AC in EFLAGS.
-native void:clac();
+native Void:clac();
 
 /// Invoke HALT.
-native void:halt();
+native Void:halt();
 
 /// Invoke UD2.
-native void:ud2();
+native Void:ud2();
 
 /// Invoke INT3.
-native void:int3();
+native Void:int3();
 
 /// Invoke INT 2C.
-native void:int2c();
+native Void:int2c();
 
 /// Write Back and Invalidate Cache.
-native void:wbinvd();
+native Void:wbinvd();

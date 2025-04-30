@@ -409,7 +409,7 @@ cleanup:
     return ret;
 }
 
-void:i801_set_hstadd(addr, read_write)
+Void:i801_set_hstadd(addr, read_write)
 {
     io_out_byte(SMBHSTADD, ((addr & 0x7f) << 1) | (read_write & 0x01));
 }

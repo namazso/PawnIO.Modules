@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
 
@@ -388,13 +390,17 @@ unmap:
     return status;
 }
 
-/* Allows changing between I2C ports on the chipset. */
-// IN: [0] = port (optional)
-// OUT: [0] = previous port
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-// WARNING: Changing to port 2, 3, or 4 may break other software expecting to be using port 0.
-// NOTICE: Port 1 uses a different base address, and should not break other software expecting another port.
-// NOTICE: Ports 3 and 4 are marked as reserved in the datasheet, use at your own risk.
+/// Select I2C port on the chipset.
+///
+/// @param in [0] = Port or -1 for none
+/// @param in_size Must be 1
+/// @param out [0] = Old port
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// @warning Changing to port 2, 3, or 4 may break other software expecting to be using port 0
+/// @note Port 1 uses a different base address, and should not break other software expecting another port
+/// @note Ports 3 and 4 are marked as reserved in the datasheet, use at your own risk
 forward ioctl_piix4_port_sel(in[], in_size, out[], out_size);
 public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     if (out_size < 1)
@@ -411,16 +417,16 @@ public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
 
     switch (new_port) {
     case -1, 0, 2, 3, 4:
-            {
-                piix4_smba = addresses[0];
+        {
+            piix4_smba = addresses[0];
             status = piix4_port_sel(new_port, old_port);
-            }
-        case 1:
-            // Port 1 is the aux port, we just change the base address
-            piix4_smba = addresses[1];
-        default:
-            return STATUS_INVALID_PARAMETER;
         }
+    case 1:
+        // Port 1 is the aux port, we just change the base address
+        piix4_smba = addresses[1];
+    default:
+        return STATUS_INVALID_PARAMETER;
+    }
 
     if (!NT_SUCCESS(status))
         return status;
@@ -433,14 +439,19 @@ public ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     return status;
 }
 
-/*
- * The SMBus Read/Write Quick protocol (SMBQuick) is typically used to control
- * simple devices using a device-specific binary command (for example, ON and OFF).
- * Command values are not used by this protocol and thus only a single element
- * (at offset 0) can be specified in the field definition.
- */
-// IN: [0] = address, [1] = command
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus quick write.
+///
+/// The SMBus Read/Write Quick protocol (SMBQuick) is typically used to control
+/// simple devices using a device-specific binary command (for example, ON and OFF).
+/// Command values are not used by this protocol and thus only a single element
+/// (at offset 0) can be specified in the field definition.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_quick(in[], in_size, out[], out_size);
 public ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -454,15 +465,19 @@ public ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, command, 0, I2C_SMBUS_QUICK, 0, unused);
 }
 
-/*
- * The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
- * byte of data. Like Read/Write Quick, command values are not used by this
- * protocol and thus only a single element (at offset 0) can be specified in
- * the field definition.
- */
-// IN: [0] = address
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte receive.
+///
+/// The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
+/// byte of data. Like Read/Write Quick, command values are not used by this
+/// protocol and thus only a single element (at offset 0) can be specified in
+/// the field definition.
+///
+/// @param in [0] = Address
+/// @param in_size Must be 1
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_byte(in[], in_size, out[], out_size);
 public ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
     if (in_size < 1)
@@ -475,8 +490,19 @@ public ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
 }
 
-// IN: [0] = address, [1] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte send.
+///
+/// The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
+/// byte of data. Like Read/Write Quick, command values are not used by this
+/// protocol and thus only a single element (at offset 0) can be specified in
+/// the field definition.
+///
+/// @param in [0] = Address, [1] = Data
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_byte(in[], in_size, out[], out_size);
 public ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -490,14 +516,18 @@ public ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, 0, unused);
 }
 
-/*
- * The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
- * data. But unlike Send/Receive Byte, this protocol uses a command value to
- * reference up to 256 byte-sized virtual registers.
- */
-// IN: [0] = address, [1] = command
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte read.
+///
+/// The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
+/// data. But unlike Send/Receive Byte, this protocol uses a command value to
+/// reference up to 256 byte-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_byte_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -511,8 +541,18 @@ public ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, 0, out[0]);
 }
 
-// IN: [0] = address, [1] = command, [2] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus byte write.
+///
+/// The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
+/// data. But unlike Send/Receive Byte, this protocol uses a command value to
+/// reference up to 256 byte-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Data
+/// @param in_size Must be 3
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_byte_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -527,14 +567,18 @@ public ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, data, unused);
 }
 
-/*
- * The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
- * This protocol also uses a command value to reference up to 256 word-sized
- * virtual device registers.
- */
-// IN: [0] = address, [1] = command
-// OUT: [0] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus word read.
+///
+/// The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
+/// This protocol also uses a command value to reference up to 256 word-sized
+/// virtual device registers.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out [0] = Data
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_word_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -548,8 +592,18 @@ public ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, 0, out[0]);
 }
 
-// IN: [0] = address, [1] = command, [2] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus word write.
+///
+/// The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
+/// This protocol also uses a command value to reference up to 256 word-sized
+/// virtual device registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Data
+/// @param in_size Must be 3
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_word_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
     if (in_size < 3)
@@ -564,14 +618,18 @@ public ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
     return piix4_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_WORD_DATA, data, unused);
 }
 
-/*
- * The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
- * (0-32 bytes) data. This protocol uses a command value to reference up to 256
- * block-sized virtual registers.
- */
-// IN: [0] = address, [1] = command
-// OUT: [0] = length, [1..5] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus block read.
+///
+/// The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
+/// (0-32 bytes) data. This protocol uses a command value to reference up to 256
+/// block-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command
+/// @param in_size Must be 2
+/// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
+/// @param out_size Must be 5
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_read_block_data(in[], in_size, out[], out_size);
 public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
     if (in_size < 2)
@@ -596,8 +654,18 @@ public ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
     return status;
 }
 
-// IN: [0] = address, [1] = command, [2] = length, [3..7] = data
-// WARNING: You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// SMBus block write.
+///
+/// The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
+/// (0-32 bytes) data. This protocol uses a command value to reference up to 256
+/// block-sized virtual registers.
+///
+/// @param in [0] = Address, [1] = Command, [2] = Length in bytes, [3..7] = Data (byte packed)
+/// @param in_size Must be 7
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
 forward ioctl_piix4_write_block_data(in[], in_size, out[], out_size);
 public ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
     if (in_size < 7)

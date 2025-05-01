@@ -199,8 +199,8 @@ detect_chip() {
     // unknown, just leave it as 0
 }
 
-forward ioctl_detect(in[], in_size, out[], out_size);
-public ioctl_detect(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_detect(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_detect(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -230,8 +230,8 @@ public ioctl_detect(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_read(in[], in_size, out[], out_size);
-public ioctl_read(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_read(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_read(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -246,8 +246,8 @@ public ioctl_read(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_write(in[], in_size, out[], out_size);
-public ioctl_write(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_write(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_write(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -261,8 +261,8 @@ public ioctl_write(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_enter(in[], in_size, out[], out_size);
-public ioctl_enter(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_enter(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_enter(in[], in_size, out[], out_size) {
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
 
@@ -280,8 +280,8 @@ public ioctl_enter(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_exit(in[], in_size, out[], out_size);
-public ioctl_exit(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_exit(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_exit(in[], in_size, out[], out_size) {
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
 
@@ -315,8 +315,8 @@ is_port_allowed(port) {
     return valid;
 }
 
-forward ioctl_pio_read(in[], in_size, out[], out_size);
-public ioctl_pio_read(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -334,8 +334,8 @@ public ioctl_pio_read(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward ioctl_pio_write(in[], in_size, out[], out_size);
-public ioctl_pio_write(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_pio_write(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_pio_write(in[], in_size, out[], out_size) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -396,7 +396,7 @@ it87_find_mmio() {
     return true;
 }
 
-set_gigabyte_controller(enable, &old) {
+NTSTATUS:set_gigabyte_controller(enable, &old) {
     old = 0;
 
     if ((g_type >> 32) != Vendor_IT87)
@@ -409,7 +409,7 @@ set_gigabyte_controller(enable, &old) {
 
     new didvid;
     // see D14F3x https://www.amd.com/system/files/TechDocs/55072_AMD_Family_15h_Models_70h-7Fh_BKDG.pdf
-    new status = pci_config_read_dword(0x0, 0x14, 0x3, 0, didvid);
+    new NTSTATUS:status = pci_config_read_dword(0x0, 0x14, 0x3, 0, didvid);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -459,10 +459,10 @@ set_gigabyte_controller(enable, &old) {
         pci_config_write_dword(0x0, 0x14, 0x3, romAddressRange2Register, enabledRomAddressRegister);
     }
 
-    new va = io_space_map(g_mmio_base, PAGE_SIZE);
+    new VA:va = io_space_map(g_mmio_base, PAGE_SIZE);
     if (va) {
-        new controllerFanControlAddress = va + ControllerFanControlArea;
-        new controllerFanControlEnabled = controllerFanControlAddress + ControllerEnableRegister;
+        new VA:controllerFanControlAddress = va + ControllerFanControlArea;
+        new VA:controllerFanControlEnabled = controllerFanControlAddress + ControllerEnableRegister;
 
         status = virtual_read_byte(controllerFanControlEnabled, old);
         if (NT_SUCCESS(status) && old != enable && enable != -1) {
@@ -483,8 +483,8 @@ set_gigabyte_controller(enable, &old) {
     return status;
 }
 
-forward ioctl_set_gigabyte_controller(in[], in_size, out[], out_size);
-public ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
+forward NTSTATUS:ioctl_set_gigabyte_controller(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
@@ -499,14 +499,14 @@ public ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
         return STATUS_INVALID_PARAMETER;
 
     new old = 0;
-    new status = set_gigabyte_controller(value, old);
+    new NTSTATUS:status = set_gigabyte_controller(value, old);
 
     out[0] = old;
 
     return status;
 }
 
-main() {
+NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
     

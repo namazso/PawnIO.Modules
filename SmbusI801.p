@@ -260,16 +260,17 @@ NTSTATUS:i801_init()
     return STATUS_SUCCESS;
 }
 
-i801_get_block_len()
+NTSTATUS:i801_get_block_len(&len)
 {
-    new len = io_in_byte(SMBHSTDAT0);
+    len = io_in_byte(SMBHSTDAT0);
 
     if (len < 1 || len > I2C_SMBUS_BLOCK_MAX) {
+        len = 0;
         debug_print(''Illegal SMBus block read size %u\n'', len);
         return STATUS_DEVICE_PROTOCOL_ERROR;
     }
 
-    return len;
+    return STATUS_SUCCESS;
 }
 
 // Make sure the SMBus host is ready to start transmitting.
@@ -292,26 +293,22 @@ NTSTATUS:i801_check_pre()
     return STATUS_SUCCESS;
 }
 
-i801_check_post(hststs)
+i801_kill() {
+    // try to stop the current command
+    io_out_byte(SMBHSTCNT, SMBHSTCNT_KILL);
+    microsleep(1000);
+    io_out_byte(SMBHSTCNT, 0);
+
+    // Check if it worked
+    new hststs = io_in_byte(SMBHSTSTS);
+    if ((hststs & SMBHSTSTS_HOST_BUSY) ||
+        !(hststs & SMBHSTSTS_FAILED))
+        debug_print(''Failed terminating the transaction\n'');
+}
+
+NTSTATUS:i801_hststs_to_ntstatus(hststs)
 {
     new NTSTATUS:status = STATUS_SUCCESS;
-
-    // If the SMBus is still busy, we give up
-    if (!NT_SUCCESS(hststs)) {
-        status = hststs;
-
-        // try to stop the current command
-        io_out_byte(SMBHSTCNT, SMBHSTCNT_KILL);
-        microsleep(1000);
-        io_out_byte(SMBHSTCNT, 0);
-
-        // Check if it worked
-        hststs = io_in_byte(SMBHSTSTS);
-        if ((hststs & SMBHSTSTS_HOST_BUSY) ||
-            !(hststs & SMBHSTSTS_FAILED))
-            debug_print(''Failed terminating the transaction\n'');
-        return status;
-    }
 
     if (hststs & SMBHSTSTS_FAILED) {
         status = STATUS_IO_DEVICE_ERROR;
@@ -329,43 +326,45 @@ i801_check_post(hststs)
     return status;
 }
 
-i801_wait_intr()
+NTSTATUS:i801_wait_intr(&hststs)
 {
     new retries = 0;
-    new hststs;
 
     do {
         microsleep(250);
         hststs = io_in_byte(SMBHSTSTS);
         hststs &= STATUS_ERROR_FLAGS | SMBHSTSTS_INTR;
-        if (!(hststs & SMBHSTSTS_HOST_BUSY) && hststs)
-            return hststs & STATUS_ERROR_FLAGS;
+        if (!(hststs & SMBHSTSTS_HOST_BUSY) && hststs) {
+            hststs &= STATUS_ERROR_FLAGS;
+            return STATUS_SUCCESS;
+        }
     } while (((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) && (++retries < MAX_RETRIES));
 
     if (retries >= MAX_RETRIES)
         return STATUS_IO_TIMEOUT;
+
+    hststs &= (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR);
     
-    return hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR);
+    return STATUS_SUCCESS;
 }
 
-i801_transaction(xact)
+NTSTATUS:i801_transaction(xact, &hststs)
 {
-    new hststs;
-
     new old_hstcnt = io_in_byte(SMBHSTCNT);
     io_out_byte(SMBHSTCNT, old_hstcnt & ~SMBHSTCNT_INTREN);
 
     io_out_byte(SMBHSTCNT, xact | SMBHSTCNT_START);
 
-    hststs = i801_wait_intr();
+    new NTSTATUS:status = i801_wait_intr(hststs);
     // restore previous HSTCNT, enabling interrupts if previously enabled
     io_out_byte(SMBHSTCNT, old_hstcnt);
-    return hststs;
+    return status;
 }
 
-i801_block_transaction_by_block(read_write, command, in[33], out[33])
+NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &hststs)
 {
-    new len, ret, xact;
+    hststs = 0;
+    new NTSTATUS:status, len, xact;
 
     switch (command) {
     case I2C_SMBUS_BLOCK_PROC_CALL:
@@ -387,15 +386,20 @@ i801_block_transaction_by_block(read_write, command, in[33], out[33])
             io_out_byte(SMBBLKDAT, in[i+1]);
     }
 
-    ret = i801_transaction(xact);
-    if (ret)
+    status = i801_transaction(xact, hststs);
+    if (!NT_SUCCESS(status)) {
         goto cleanup;
+    }
+
+    if (hststs) {
+        status = STATUS_SUCCESS; // the transaction succeeded, but we got an error back
+        goto cleanup;
+    }
 
     if (read_write == I2C_SMBUS_READ ||
         command == I2C_SMBUS_BLOCK_PROC_CALL) {
-        len = i801_get_block_len();
-        if (len < 0) {
-            ret = len;
+        status = i801_get_block_len(len);
+        if (!NT_SUCCESS(status)) {
             goto cleanup;
         }
 
@@ -406,7 +410,7 @@ i801_block_transaction_by_block(read_write, command, in[33], out[33])
     }
 cleanup:
     io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & ~SMBAUXCTL_E32B);
-    return ret;
+    return status;
 }
 
 Void:i801_set_hstadd(addr, read_write)
@@ -414,9 +418,9 @@ Void:i801_set_hstadd(addr, read_write)
     io_out_byte(SMBHSTADD, ((addr & 0x7f) << 1) | (read_write & 0x01));
 }
 
-i801_simple_transaction(addr, hstcmd, read_write, command, in, &out)
+NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &hststs)
 {
-    new xact, hststs;
+    new xact;
 
     switch (command) {
     case I2C_SMBUS_QUICK:
@@ -465,25 +469,28 @@ i801_simple_transaction(addr, hstcmd, read_write, command, in, &out)
         }
     }
 
-    hststs = i801_transaction(xact);
-    if (hststs || read_write == I2C_SMBUS_WRITE)
-        return hststs;
+    new NTSTATUS:status = i801_transaction(xact, hststs);
+    if (!NT_SUCCESS(status))
+        return status;
+    
 
-    switch (command) {
-    case I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA:
-        {
-            out = io_in_byte(SMBHSTDAT0);
-        }
-    case I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
-        {
-            out = io_in_byte(SMBHSTDAT0) | (io_in_byte(SMBHSTDAT1) << 8);
+    if (!hststs && read_write != I2C_SMBUS_WRITE) {
+        switch (command) {
+        case I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA:
+            {
+                out = io_in_byte(SMBHSTDAT0);
+            }
+        case I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
+            {
+                out = io_in_byte(SMBHSTDAT0) | (io_in_byte(SMBHSTDAT1) << 8);
+            }
         }
     }
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
-NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33])
+NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33], &hststs)
 {
     if (read_write == I2C_SMBUS_READ && command == I2C_SMBUS_BLOCK_DATA)
         /* Mark block length as invalid */
@@ -502,7 +509,7 @@ NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33],
     // 	return i801_block_transaction_by_block(data, read_write, command);
     // else
     // 	return i801_block_transaction_byte_by_byte(data, read_write, command);
-    return i801_block_transaction_by_block(read_write, command, in, out);
+    return i801_block_transaction_by_block(read_write, command, in, out, hststs);
 }
 
 NTSTATUS:i801_inuse(bool:inuse)
@@ -546,7 +553,7 @@ NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
 
     switch (size) {
         case I2C_SMBUS_QUICK, I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
-            hststs = i801_simple_transaction(addr, command, read_write, size, in, out);
+            status = i801_simple_transaction(addr, command, read_write, size, in, out, hststs);
         default:
             {
                 debug_print(''Unsupported simple transaction %d\n'', size);
@@ -555,7 +562,13 @@ NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
             }
     }
 
-    status = i801_check_post(hststs);
+
+    if (!NT_SUCCESS(status)) {
+        i801_kill();
+        goto unlock;
+    }
+
+    status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
     i801_inuse(false);
@@ -579,7 +592,7 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
 
     switch (size) {
         case I2C_SMBUS_BLOCK_DATA, I2C_SMBUS_BLOCK_PROC_CALL:
-            hststs = i801_smbus_block_transaction(addr, command, read_write, size, in, out);
+            status = i801_smbus_block_transaction(addr, command, read_write, size, in, out, hststs);
         default:
             {
                 debug_print(''Unsupported block transaction %d\n'', size);
@@ -588,7 +601,12 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
             }
     }
 
-    status = i801_check_post(hststs);
+    if (!NT_SUCCESS(status)) {
+        i801_kill();
+        goto unlock;
+    }
+    
+    status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
     i801_inuse(false);

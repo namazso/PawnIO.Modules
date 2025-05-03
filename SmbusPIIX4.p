@@ -398,7 +398,8 @@ NTSTATUS:piix4_port_sel(port, &old_port) {
         if (port == 1 || port == -1) {
             return STATUS_SUCCESS; // Nothing to do
         } else {
-            new NTSTATUS:status = piix4_port_sel_primary(port, old_port);
+            new old_port_tmp;
+            new NTSTATUS:status = piix4_port_sel_primary(port, old_port_tmp);
             if (NT_SUCCESS(status)) {
                 piix4_smba = addresses[0]; // Switch to primary as we plan to return success
             }

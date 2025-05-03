@@ -414,7 +414,7 @@ NTSTATUS:piix4_port_sel(port, &old_port) {
             }
             return status;
         } else {
-            return piix4_port_sel_primary(-1, old_port);
+            return piix4_port_sel_primary(port, old_port);
         }
     }
 }

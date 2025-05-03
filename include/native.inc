@@ -157,8 +157,8 @@ stock operator-(VA:a, VA:b) {
 /// Map physical memory to virtual, which can be accessed by the `virtual_*`
 /// family of functions.
 ///
-/// @param pa Physical address, page aligned
-/// @param size Size to map, page aligned
+/// @param pa Physical address
+/// @param size Size to map
 /// @return Virtual address
 /// @retval 0 Mapping failed, not enough VA space
 /// @warning The mapping is a resource that must be freed (unmapped)
@@ -166,8 +166,8 @@ native VA:io_space_map(pa, size);
 
 /// Unmap IO space.
 ///
-/// @param pa Physical address, page aligned
-/// @param size Size to unmap, page aligned
+/// @param pa Physical address
+/// @param size Size to unmap
 native Void:io_space_unmap(VA:va, size);
 
 /// Read a byte from virtual memory.

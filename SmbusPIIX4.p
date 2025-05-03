@@ -342,7 +342,7 @@ NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:piix4_port_sel(port, &old_port)
+NTSTATUS:piix4_port_sel_primary(port, &old_port)
 {
     new NTSTATUS:status = STATUS_SUCCESS;
 
@@ -390,6 +390,35 @@ unmap:
     return status;
 }
 
+NTSTATUS:piix4_port_sel(port, &old_port) {
+    if (piix4_smba == addresses[1]) {
+        // Current port is aux
+
+        old_port = 1;
+        if (port == 1 || port == -1) {
+            return STATUS_SUCCESS; // Nothing to do
+        } else {
+            new NTSTATUS:status = piix4_port_sel_primary(port, old_port);
+            if (NT_SUCCESS(status)) {
+                piix4_smba = addresses[0]; // Switch to primary as we plan to return success
+            }
+            return status;
+        }
+    } else {
+        // Current port is primary
+
+        if (port == 1) {
+            new NTSTATUS:status = piix4_port_sel_primary(-1, old_port);
+            if (NT_SUCCESS(status)) {
+                piix4_smba = addresses[1]; // Switch to auxilary as we plan to return success
+            }
+            return status;
+        } else {
+            return piix4_port_sel_primary(-1, old_port);
+        }
+    }
+}
+
 /// Select I2C port on the chipset.
 ///
 /// @param in [0] = Port or -1 for none
@@ -409,32 +438,11 @@ public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
         return STATUS_BUFFER_TOO_SMALL;
 
     new new_port = in[0];
+    new old_port = -1;
 
-    new old_addr = piix4_smba;
-    new old_port = 0;
-
-    new NTSTATUS:status = STATUS_SUCCESS;
-
-    switch (new_port) {
-    case -1, 0, 2, 3, 4:
-        {
-            piix4_smba = addresses[0];
-            status = piix4_port_sel(new_port, old_port);
-        }
-    case 1:
-        // Port 1 is the aux port, we just change the base address
-        piix4_smba = addresses[1];
-    default:
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    if (!NT_SUCCESS(status))
-        return status;
-
-    if (old_addr == addresses[1])
-        out[0] = 1;
-    else
-        out[0] = old_port;
+    new NTSTATUS:status = piix4_port_sel(new_port, old_port);
+    
+    out[0] = old_port;
 
     return status;
 }

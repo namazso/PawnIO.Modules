@@ -416,7 +416,10 @@ public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     new NTSTATUS:status = STATUS_SUCCESS;
 
     switch (new_port) {
-    case -1, 0, 2, 3, 4:
+    case -1:
+        if (old_addr == addresses[0])
+            status = piix4_port_sel(new_port, old_port);
+    case 0, 2, 3, 4:
         {
             piix4_smba = addresses[0];
             status = piix4_port_sel(new_port, old_port);
@@ -432,9 +435,8 @@ public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
         return status;
 
     if (old_addr == addresses[1])
-        out[0] = 1;
-    else
-        out[0] = old_port;
+        old_port = 1;
+    out[0] = old_port;
 
     return status;
 }

@@ -64,7 +64,7 @@ There are 6 classes of reasons for the reboot:
 
 /// Read the PMx000000C0 (FCH::PM::S5_RESET_STATUS) register.
 ///
-/// @param out = Value read
+/// @param out Value read
 /// @return An NTSTATUS
 NTSTATUS:amd_reset_status(&out) {
     new NTSTATUS:status;
@@ -80,7 +80,7 @@ NTSTATUS:amd_reset_status(&out) {
     new reset_status;
     status = virtual_read_dword(va, reset_status);
     if (!NT_SUCCESS(status))
-        debug_print(''Failed to read reset status\n'');
+        debug_print(''Failed to read reset status: %x\n'', _:status);
     else if (reset_status == 0xFFFFFFFF) {
         debug_print(''Failed to read reset status\n'');
         status = STATUS_UNSUCCESSFUL;
@@ -135,9 +135,5 @@ public NTSTATUS:ioctl_amd_reset_status(in[], in_size, out[], out_size) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new NTSTATUS:status = amd_reset_status(out[0]);
-    if (!NT_SUCCESS(status))
-        return status;
-
-    return STATUS_SUCCESS;
+    return amd_reset_status(out[0]);
 }

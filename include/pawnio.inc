@@ -37,3 +37,29 @@ stock bool:is_intel(vendor[4]) {
     return vendor[1] == CHAR4_CONST('G', 'e', 'n', 'u') && vendor[3] == CHAR4_CONST('i', 'n', 'e', 'I') && vendor[2] == CHAR4_CONST('n', 't', 'e', 'l');
 }
 
+/// Busy sleep, not recommended above 50us.
+///
+/// @param us Microseconds to sleep
+stock Void:microsleep2(us) {
+    static VAProc:KeStallExecutionProcessor = VAProc:0;
+    if (KeStallExecutionProcessor == VAProc:0) {
+        KeStallExecutionProcessor = get_proc_address(''KeStallExecutionProcessor'');
+    }
+    // Allow precaching the ptr with us == 0
+    if (us > 0) {
+        new ret;
+        invoke(KeStallExecutionProcessor, ret, us);
+    }
+}
+
+#define KUSER_SHARED_DATA VA:0xFFFFF78000000000
+
+/// Get tick count.
+///
+/// @return Tick count
+stock get_tick_count() {
+    new value;
+    // KUSER_SHARED_DATA->TickCountQuad
+    virtual_read_qword(KUSER_SHARED_DATA + 0x0320, value);
+    return value;
+}

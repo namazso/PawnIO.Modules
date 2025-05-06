@@ -1,0 +1,30 @@
+name: build
+
+on:
+  push:
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    container:
+      image: oraclelinux:9
+    steps:
+      - name: Install git
+        run: dnf install -yq git
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install pawn
+        run: dnf install -yq _pawn/*.rpm
+      
+      - name: Compile modules
+        run: pawncc *.p -iinclude --% -C64 -;+ -(+
+        
+      - name: Upload modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules
+          path: |
+            .\*.amx

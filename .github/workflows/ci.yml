@@ -27,4 +27,4 @@ jobs:
         with:
           name: modules
           path: |
-            .\*.amx
+            ./*.amx

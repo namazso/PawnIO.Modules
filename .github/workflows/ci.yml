@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pawn
-        run: dnf install -yq _pawn/*.rpm
+        run: dnf install -yq _pawn/pawn-*.x86_64.rpm
       
       - name: Compile modules
         run: pawncc *.p -iinclude --% -C64 -;+ -(+

@@ -850,7 +850,7 @@ public NTSTATUS:ioctl_i801_write_block_data(in[], in_size, out[], out_size) {
     new command = in[1];
     new length = in[2];
 
-    if (length > I2C_SMBUS_BLOCK_MAX)
+    if (length > I2C_SMBUS_BLOCK_MAX || length < 1)
         return STATUS_INVALID_PARAMETER;
     
     new in_data[I2C_SMBUS_BLOCK_MAX + 1];
@@ -915,7 +915,7 @@ public NTSTATUS:ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
     new command = in[1];
     new length = in[2];
 
-    if (length > I2C_SMBUS_BLOCK_MAX)
+    if (length > I2C_SMBUS_BLOCK_MAX || length < 0)
         return STATUS_INVALID_PARAMETER;
 
     new in_data[I2C_SMBUS_BLOCK_MAX + 1];

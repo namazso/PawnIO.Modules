@@ -85,62 +85,9 @@
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
 
-new tsc_freq;
-
-// Gets the TSC frequency in Hz
-NTSTATUS:get_tsc_freq()
-{
-    // This method is only supported on AMD 17h (Ryzen) and later processors
-    new vendor[4];
-    cpuid(0, 0, vendor);
-    if (!is_amd(vendor))
-        return STATUS_NOT_SUPPORTED;
-
-    new procinfo[4];
-    cpuid(1, 0, procinfo);
-
-    new family = ((procinfo[0] & 0x0FF00000) >> 20) + ((procinfo[0] & 0x0F00) >> 8);
-    if (family < 0x17)
-        return STATUS_NOT_SUPPORTED;
-
-    // TSC clocks at the same frequency as P state 0
-    // it is not affected by the processors actual clock
-    new pstatedef;
-    // Read the PStateDef MSR
-    msr_read(0xc0010064, pstatedef);
-    // CpuFid is the first 8 bits, times 25 as per datasheet
-    new p0_freq = ((pstatedef & 0xff) * 25);
-    new cpudfsid = (pstatedef >> 8) & 0x3f;
-    switch (cpudfsid) {
-        case 0x08:
-            p0_freq /= 1;
-        case 0x09:
-            p0_freq = p0_freq * 1125 / 1000;
-        case 0x0A..0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x28, 0x2A, 0x2C:
-            p0_freq /= cpudfsid / 8;
-        default:
-            {
-                debug_print(''Unknown CPU DFSID %x\n'', cpudfsid);
-                return STATUS_NOT_SUPPORTED;        
-            }
-    }
-
-    tsc_freq = p0_freq * (1000 * 1000); // MHz to Hz
-
-    if (tsc_freq == 0) {
-        debug_print(''Failed to get TSC frequency\n'');
-        return STATUS_NOT_SUPPORTED;
-    }
-    return STATUS_SUCCESS;
-}
-
 NTSTATUS:piix4_init()
 {
     new NTSTATUS:status;
-
-    status = get_tsc_freq();
-    if (!NT_SUCCESS(status))
-        return status;
 
     // Check that a PCI device at 00:14.0 exists and is an AMD SMBus controller
     new dev_vid;
@@ -246,10 +193,10 @@ NTSTATUS:piix4_transaction()
     io_out_byte(SMBHSTCNT, io_in_byte(SMBHSTCNT) | 0x040);
 
     // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
-    new deadline = rdtsc() + (tsc_freq * MAX_TIMEOUT / 1000);
+    new deadline = get_tick_count() + MAX_TIMEOUT;
     do
         temp = io_in_byte(SMBHSTSTS);
-    while ((rdtsc() < deadline) && ((temp & 0x03) != 0x02));
+    while ((get_tick_count() < deadline) && ((temp & 0x03) != 0x02));
 
     /* If the SMBus is still busy, we give up */
     if ((temp & 0x03) != 0x02) {

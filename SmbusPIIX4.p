@@ -194,9 +194,12 @@ NTSTATUS:piix4_transaction()
 
     // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
     new deadline = get_tick_count() + MAX_TIMEOUT;
-    do
+    // Testing shows we're usually done in 120-160us
+    microsleep2(100);
+    do {
+        microsleep2(20);
         temp = io_in_byte(SMBHSTSTS);
-    while ((get_tick_count() < deadline) && ((temp & 0x03) != 0x02));
+    } while ((get_tick_count() < deadline) && ((temp & 0x03) != 0x02));
 
     /* If the SMBus is still busy, we give up */
     if ((temp & 0x03) != 0x02) {

@@ -85,9 +85,62 @@
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
 
+new tsc_freq;
+
+// Gets the TSC frequency in Hz
+NTSTATUS:get_tsc_freq()
+{
+    // This method is only supported on AMD 17h (Ryzen) and later processors
+    new vendor[4];
+    cpuid(0, 0, vendor);
+    if (!is_amd(vendor))
+        return STATUS_NOT_SUPPORTED;
+
+    new procinfo[4];
+    cpuid(1, 0, procinfo);
+
+    new family = ((procinfo[0] & 0x0FF00000) >> 20) + ((procinfo[0] & 0x0F00) >> 8);
+    if (family < 0x17)
+        return STATUS_NOT_SUPPORTED;
+
+    // TSC clocks at the same frequency as P state 0
+    // it is not affected by the processors actual clock
+    new pstatedef;
+    // Read the PStateDef MSR
+    msr_read(0xc0010064, pstatedef);
+    // CpuFid is the first 8 bits, times 25 as per datasheet
+    new p0_freq = ((pstatedef & 0xff) * 25);
+    new cpudfsid = (pstatedef >> 8) & 0x3f;
+    switch (cpudfsid) {
+        case 0x08:
+            p0_freq /= 1;
+        case 0x09:
+            p0_freq = p0_freq * 1125 / 1000;
+        case 0x0A..0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x28, 0x2A, 0x2C:
+            p0_freq /= cpudfsid / 8;
+        default:
+            {
+                debug_print(''Unknown CPU DFSID %x\n'', cpudfsid);
+                return STATUS_NOT_SUPPORTED;        
+            }
+    }
+
+    tsc_freq = p0_freq * (1000 * 1000); // MHz to Hz
+
+    if (tsc_freq == 0) {
+        debug_print(''Failed to get TSC frequency\n'');
+        return STATUS_NOT_SUPPORTED;
+    }
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS:piix4_init()
 {
     new NTSTATUS:status;
+
+    status = get_tsc_freq();
+    if (!NT_SUCCESS(status))
+        return status;
 
     // Check that a PCI device at 00:14.0 exists and is an AMD SMBus controller
     new dev_vid;
@@ -166,13 +219,10 @@ unmap:
 
     return STATUS_SUCCESS;
 }
-
-NTSTATUS:piix4_transaction()
+NTSTATUS:piix4_busy_check()
 {
     new temp;
-    new NTSTATUS:status = STATUS_SUCCESS;
-    new timeout = 0;
-
+    
     /* Make sure the SMBus host is ready to start transmitting */
     if ((temp = io_in_byte(SMBHSTSTS)) != 0x00) {
         debug_print(''SMBus busy (%x). Resetting...\n'', temp);
@@ -184,18 +234,25 @@ NTSTATUS:piix4_transaction()
             debug_print(''Successful!\n'');
         }
     }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS:piix4_transaction()
+{
+    new NTSTATUS:status = STATUS_SUCCESS;
+    new temp;
 
     /* start the transaction by setting bit 6 */
     io_out_byte(SMBHSTCNT, io_in_byte(SMBHSTCNT) | 0x040);
 
-    /* We will always wait for a fraction of a second! (See PIIX4 docs errata) */
+    // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
+    new deadline = rdtsc() + (tsc_freq * MAX_TIMEOUT / 1000);
     do
-        microsleep(250);
-    while ((++timeout < MAX_TIMEOUT) &&
-           ((temp = io_in_byte(SMBHSTSTS)) & 0x01));
+        temp = io_in_byte(SMBHSTSTS);
+    while ((rdtsc() < deadline) && ((temp & 0x03) != 0x02));
 
     /* If the SMBus is still busy, we give up */
-    if (timeout == MAX_TIMEOUT) {
+    if ((temp & 0x03) != 0x02) {
         debug_print(''SMBus Timeout!\n'');
         status = STATUS_IO_TIMEOUT;
     }
@@ -231,6 +288,10 @@ NTSTATUS:piix4_transaction()
 NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
 {
     new NTSTATUS:status;
+
+    status = piix4_busy_check();
+    if (!NT_SUCCESS(status))
+        return status;
 
     switch (size) {
     case I2C_SMBUS_QUICK:
@@ -294,6 +355,12 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
 
 NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
 {
+    new NTSTATUS:status;
+
+    status = piix4_busy_check();
+    if (!NT_SUCCESS(status))
+        return status;
+
     switch (size) {
     case I2C_SMBUS_BLOCK_DATA:
         {
@@ -320,7 +387,7 @@ NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
 
     io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
 
-    new NTSTATUS:status = piix4_transaction();
+    status = piix4_transaction();
     if (!NT_SUCCESS(status))
         return status;
 
@@ -348,6 +415,11 @@ NTSTATUS:piix4_port_sel_primary(port, &old_port)
 
     static port_to_reg[] = [0b00, 0b00, 0b01, 0b10, 0b11];
     static reg_to_port[] = [0, 2, 3, 4];
+
+    // Not exactly needed, but probably a good idea to check
+    status = piix4_busy_check();
+    if (!NT_SUCCESS(status))
+        return status;
 
     // Map MMIO space
     new VA:addr = io_space_map(SB800_PIIX4_FCH_PM_ADDR, SB800_PIIX4_FCH_PM_SIZE);
@@ -696,5 +768,8 @@ public NTSTATUS:ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
 }
 
 NTSTATUS:main() {
+    if (get_arch() != ARCH_X64)
+        return STATUS_NOT_SUPPORTED;
+
     return piix4_init();
 }

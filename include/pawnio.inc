@@ -59,7 +59,9 @@ stock Void:microsleep2(us) {
 /// @return Tick count
 stock get_tick_count() {
     new value;
+    new multiplier;
     // KUSER_SHARED_DATA->TickCountQuad
     virtual_read_qword(KUSER_SHARED_DATA + 0x0320, value);
-    return value;
+    virtual_read_dword(KUSER_SHARED_DATA + 0x0004, multiplier);
+    return (value * multiplier) >> 24;
 }

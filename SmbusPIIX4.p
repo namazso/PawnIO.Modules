@@ -199,10 +199,10 @@ NTSTATUS:piix4_transaction()
     do {
         microsleep2(20);
         temp = io_in_byte(SMBHSTSTS);
-    } while ((get_tick_count() < deadline) && ((temp & 0x03) != 0x02));
+    } while ((get_tick_count() < deadline) && (temp & 0x01));
 
     /* If the SMBus is still busy, we give up */
-    if ((temp & 0x03) != 0x02) {
+    if (temp & 0x01) {
         debug_print(''SMBus Timeout!\n'');
         status = STATUS_IO_TIMEOUT;
     }
@@ -218,7 +218,7 @@ NTSTATUS:piix4_transaction()
         /* Clock stops and target is stuck in mid-transmission */
     }
 
-    if (temp & 0x04) {
+    if (temp & 0x04 || temp & 0x02 == 0) {
         status = STATUS_NO_SUCH_DEVICE;
         debug_print(''Error: no response!\n'');
     }

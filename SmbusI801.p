@@ -116,8 +116,8 @@
 
 #define SMBUS_LEN_SENTINEL (I2C_SMBUS_BLOCK_MAX + 1)
 
-// Timeout in Linux is 200ms, 200ms / 250us = 800
-#define MAX_RETRIES (200000 / 250)
+// Timeout in Linux is 200ms
+#define MAX_TIMEOUT 200
 
 // PCI slot addresses
 // In order of most to least common
@@ -328,9 +328,12 @@ NTSTATUS:i801_hststs_to_ntstatus(hststs)
 
 NTSTATUS:i801_wait_intr(&hststs, size)
 {
-    new retries = 0;
     // 100 khz period in microseconds
     const clock_us = 10;
+
+    // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
+    new deadline = get_tick_count() + MAX_TIMEOUT;
+
     // 11 bits minimum (start + slave address + rd/wr + ack + stop)
     // 9 bits per byte (byte + ack)
     microsleep2((11 + (9 * size)) * clock_us);
@@ -344,9 +347,9 @@ NTSTATUS:i801_wait_intr(&hststs, size)
             hststs &= STATUS_ERROR_FLAGS;
             return STATUS_SUCCESS;
         }
-    } while (((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) && (++retries < MAX_RETRIES));
+    } while (((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) && (get_tick_count() < deadline));
 
-    if (retries >= MAX_RETRIES)
+    if ((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR)))
         return STATUS_IO_TIMEOUT;
 
     hststs &= (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR);
@@ -533,14 +536,14 @@ NTSTATUS:i801_inuse(bool:inuse)
     if (inuse) {
         // Wait for device to be unlocked by BIOS/ACPI
         // Linux doesn't do this, since some BIOSes might not unlock it
-        new retries = 0;
+        new deadline = get_tick_count() + MAX_TIMEOUT;
         new is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
-        while (is_inuse && (++retries < MAX_RETRIES)) {
+        while (is_inuse && (get_tick_count() < deadline)) {
             microsleep(250);
             is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
         }
         
-        if (retries >= MAX_RETRIES) {
+        if (is_inuse) {
             debug_print(''SMBus device is in use by BIOS/ACPI\n'');
             return STATUS_IO_TIMEOUT;
         }
@@ -952,5 +955,8 @@ public NTSTATUS:ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
 }
 
 NTSTATUS:main() {
+    if (get_arch() != ARCH_X64)
+        return STATUS_NOT_SUPPORTED;
+
     return i801_init();
 }

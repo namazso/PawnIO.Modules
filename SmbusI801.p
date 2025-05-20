@@ -326,12 +326,18 @@ NTSTATUS:i801_hststs_to_ntstatus(hststs)
     return status;
 }
 
-NTSTATUS:i801_wait_intr(&hststs)
+NTSTATUS:i801_wait_intr(&hststs, size)
 {
     new retries = 0;
-
+    // 100 khz period in microseconds
+    const clock_us = 10;
+    // 11 bits minimum (start + slave address + rd/wr + ack + stop)
+    // 9 bits per byte (byte + ack)
+    microsleep2((11 + (9 * size)) * clock_us);
     do {
-        microsleep(250);
+        // Only check for result once per clock cycle
+        // Also allows for 1 cycle of processing time
+        microsleep2(clock_us);
         hststs = io_in_byte(SMBHSTSTS);
         hststs &= STATUS_ERROR_FLAGS | SMBHSTSTS_INTR;
         if (!(hststs & SMBHSTSTS_HOST_BUSY) && hststs) {
@@ -348,14 +354,14 @@ NTSTATUS:i801_wait_intr(&hststs)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:i801_transaction(xact, &hststs)
+NTSTATUS:i801_transaction(xact, &hststs, size)
 {
     new old_hstcnt = io_in_byte(SMBHSTCNT);
     io_out_byte(SMBHSTCNT, old_hstcnt & ~SMBHSTCNT_INTREN);
 
     io_out_byte(SMBHSTCNT, xact | SMBHSTCNT_START);
 
-    new NTSTATUS:status = i801_wait_intr(hststs);
+    new NTSTATUS:status = i801_wait_intr(hststs, size);
     // restore previous HSTCNT, enabling interrupts if previously enabled
     io_out_byte(SMBHSTCNT, old_hstcnt);
     return status;
@@ -365,6 +371,8 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
 {
     hststs = 0;
     new NTSTATUS:status, len, xact;
+    // We don't know the return size, so lets just wait the minimum amount of time
+    new size = 3;
 
     switch (command) {
     case I2C_SMBUS_BLOCK_PROC_CALL:
@@ -380,13 +388,16 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
 
     if (read_write == I2C_SMBUS_WRITE) {
         len = in[0];
+        // write lacks repeated address
+        size = 2 + len;
         io_out_byte(SMBHSTDAT0, len);
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)
             io_out_byte(SMBBLKDAT, in[i+1]);
     }
 
-    status = i801_transaction(xact, hststs);
+    // size = command + count + address (read only) + data...
+    status = i801_transaction(xact, hststs, size);
     if (!NT_SUCCESS(status)) {
         goto cleanup;
     }
@@ -420,13 +431,14 @@ Void:i801_set_hstadd(addr, read_write)
 
 NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &hststs)
 {
-    new xact;
+    new xact, size;
 
     switch (command) {
     case I2C_SMBUS_QUICK:
         {
             i801_set_hstadd(addr, read_write);
             xact = I801_QUICK;
+            size = 0;
         }
     case I2C_SMBUS_BYTE:
         {
@@ -434,6 +446,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             if (read_write == I2C_SMBUS_WRITE)
                 io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE;
+            size = 1;
         }
     case I2C_SMBUS_BYTE_DATA:
         {
@@ -442,6 +455,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
                 io_out_byte(SMBHSTDAT0, in);
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE_DATA;
+            size = 2;
         }
     case I2C_SMBUS_WORD_DATA:
         {
@@ -452,6 +466,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             }
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
+            size = 3;
         }
     case I2C_SMBUS_PROC_CALL:
         {
@@ -461,6 +476,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             io_out_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;
+            size = 6
         }
     default:
         {
@@ -469,7 +485,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         }
     }
 
-    new NTSTATUS:status = i801_transaction(xact, hststs);
+    new NTSTATUS:status = i801_transaction(xact, hststs, size);
     if (!NT_SUCCESS(status))
         return status;
     

@@ -434,14 +434,13 @@ Void:i801_set_hstadd(addr, read_write)
 
 NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &hststs)
 {
-    new xact, size;
+    new xact, size = hstcmd;
 
     switch (command) {
     case I2C_SMBUS_QUICK:
         {
             i801_set_hstadd(addr, read_write);
             xact = I801_QUICK;
-            size = 0;
         }
     case I2C_SMBUS_BYTE:
         {
@@ -449,7 +448,6 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             if (read_write == I2C_SMBUS_WRITE)
                 io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE;
-            size = 1;
         }
     case I2C_SMBUS_BYTE_DATA:
         {
@@ -458,7 +456,6 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
                 io_out_byte(SMBHSTDAT0, in);
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE_DATA;
-            size = 2;
         }
     case I2C_SMBUS_WORD_DATA:
         {
@@ -469,7 +466,6 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             }
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
-            size = 3;
         }
     case I2C_SMBUS_PROC_CALL:
         {
@@ -479,6 +475,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             io_out_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;
+            // This doesn't follow the trend of the other commands matching their size
             size = 6
         }
     default:

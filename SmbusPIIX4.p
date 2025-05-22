@@ -48,7 +48,6 @@
 #define I2C_SMBUS_I2C_BLOCK_DATA    8
 
 /* Other settings */
-#define MAX_TIMEOUT		500
 #define  ENABLE_INT9	0
 
 /* PIIX4 constants */
@@ -82,6 +81,9 @@
 #define SMBSLVEVT	(0x0A + piix4_smba)
 #define SMBSLVDAT	(0x0C + piix4_smba)
 #define SMBTIMING	(0x0E + piix4_smba)
+
+// A 32 byte block read at 10MHz is 32.5ms, 64ms should be plenty
+#define MAX_TIMEOUT 64
 
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;

@@ -116,8 +116,8 @@
 
 #define SMBUS_LEN_SENTINEL (I2C_SMBUS_BLOCK_MAX + 1)
 
-// Timeout in Linux is 200ms
-#define MAX_TIMEOUT 200
+// A 32 byte block process at 10MHz is 62.3ms, 80ms should be plenty
+#define MAX_TIMEOUT 80
 
 // PCI slot addresses
 // In order of most to least common

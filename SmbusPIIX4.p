@@ -197,13 +197,13 @@ NTSTATUS:piix4_transaction(size)
     // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
     new deadline = get_tick_count() + MAX_TIMEOUT;
 
-    // 11 bits minimum (start + slave address + rd/wr + ack + stop)
+    // 10 start bits (start + slave address + rd/wr + ack)
     // 9 bits per byte (byte + ack)
     // From datasheet: 'Frequency = 66Mhz/(SmBusTiming * 4)' (we flip the division for the period)
-    microsleep2(((11 + (9 * size)) * timing * 4) / 66);
+    microsleep2(((10 + (9 * size)) * timing * 4) / 66);
     do {
         // Only check for result once per clock cycle
-        // Also allows for 1 cycle of processing time
+        // Also allows for 1 stop bit
         microsleep2((timing * 4) / 66);
         temp = io_in_byte(SMBHSTSTS);
     } while ((get_tick_count() < deadline) && (temp & 0x01));
@@ -273,6 +273,7 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, hstcmd, in, &out)
             if (read_write == I2C_SMBUS_WRITE)
                 io_out_byte(SMBHSTDAT0, in);
             protocol = PIIX4_BYTE_DATA;
+            size += read_write;
         }
     case I2C_SMBUS_WORD_DATA:
         {
@@ -284,6 +285,7 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, hstcmd, in, &out)
                 io_out_byte(SMBHSTDAT1, in >> 8);
             }
             protocol = PIIX4_WORD_DATA;
+            size += read_write;
         }
     default:
         {
@@ -314,7 +316,8 @@ NTSTATUS:piix4_access_block(addr, read_write, command, hstcmd, in[33], out[33])
 {
     new NTSTATUS:status, protocol;
     // We don't know the return size, so lets just wait the minimum amount of time
-    new size = 3;
+    // write lacks repeated address
+    new size = 2 + read_write;
 
     status = piix4_busy_check();
     if (!NT_SUCCESS(status))
@@ -328,15 +331,13 @@ NTSTATUS:piix4_access_block(addr, read_write, command, hstcmd, in[33], out[33])
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE) {
                 new len = in[0];
+                size += len;
                 if (len <= 0 || len > I2C_SMBUS_BLOCK_MAX)
                     return STATUS_INVALID_PARAMETER;
                 io_out_byte(SMBHSTDAT0, len);
                 io_in_byte(SMBHSTCNT);    /* Reset SMBBLKDAT */
                 for (new i = 1; i <= len; i++)
                     io_out_byte(SMBBLKDAT, in[i]);
-
-                // write lacks repeated address
-                size = 2 + len;
             }
             protocol = PIIX4_BLOCK_DATA;
         }

@@ -334,12 +334,12 @@ NTSTATUS:i801_wait_intr(&hststs, size)
     // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
     new deadline = get_tick_count() + MAX_TIMEOUT;
 
-    // 11 bits minimum (start + slave address + rd/wr + ack + stop)
+    // 10 start bits (start + slave address + rd/wr + ack)
     // 9 bits per byte (byte + ack)
-    microsleep2((11 + (9 * size)) * clock_us);
+    microsleep2((10 + (9 * size)) * clock_us);
     do {
         // Only check for result once per clock cycle
-        // Also allows for 1 cycle of processing time
+        // Also allows for 1 stop bit
         microsleep2(clock_us);
         hststs = io_in_byte(SMBHSTSTS);
         hststs &= STATUS_ERROR_FLAGS | SMBHSTSTS_INTR;
@@ -375,7 +375,8 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
     hststs = 0;
     new NTSTATUS:status, len, xact;
     // We don't know the return size, so lets just wait the minimum amount of time
-    new size = 3;
+    // write lacks repeated address
+    new size = 2 + read_write;
 
     switch (command) {
     case I2C_SMBUS_BLOCK_PROC_CALL:
@@ -391,8 +392,7 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
 
     if (read_write == I2C_SMBUS_WRITE) {
         len = in[0];
-        // write lacks repeated address
-        size = 2 + len;
+        size += len;
         io_out_byte(SMBHSTDAT0, len);
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)
@@ -456,6 +456,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
                 io_out_byte(SMBHSTDAT0, in);
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE_DATA;
+            size += read_write;
         }
     case I2C_SMBUS_WORD_DATA:
         {
@@ -466,6 +467,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             }
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
+            size += read_write;
         }
     case I2C_SMBUS_PROC_CALL:
         {

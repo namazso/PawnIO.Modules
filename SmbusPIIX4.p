@@ -232,8 +232,9 @@ NTSTATUS:piix4_transaction(size)
         debug_print(''Error: no response!\n'');
     }
 
-    if (io_in_byte(SMBHSTSTS) != 0x00)
-        io_out_byte(SMBHSTSTS, io_in_byte(SMBHSTSTS));
+    // Reset the status flags
+    if (temp != 0x00)
+        io_out_byte(SMBHSTSTS, temp);
 
     if ((temp = io_in_byte(SMBHSTSTS)) != 0x00) {
         debug_print(''Failed reset at end of transaction (%x)\n'', temp);

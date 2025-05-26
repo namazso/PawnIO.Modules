@@ -210,6 +210,12 @@ NTSTATUS:piix4_transaction(size)
         temp = io_in_byte(SMBHSTSTS);
     } while ((get_tick_count() < deadline) && (temp & 0x01));
 
+    if (temp == 0x02) {
+        // Reset the status flags
+        io_out_byte(SMBHSTSTS, temp);
+        goto check_reset;
+    }
+
     /* If the SMBus is still busy, we give up */
     if (temp & 0x01) {
         debug_print(''SMBus Timeout!\n'');
@@ -236,6 +242,7 @@ NTSTATUS:piix4_transaction(size)
     if (temp != 0x00)
         io_out_byte(SMBHSTSTS, temp);
 
+check_reset:
     if ((temp = io_in_byte(SMBHSTSTS)) != 0x00) {
         debug_print(''Failed reset at end of transaction (%x)\n'', temp);
     }

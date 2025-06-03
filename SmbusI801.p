@@ -116,8 +116,8 @@
 
 #define SMBUS_LEN_SENTINEL (I2C_SMBUS_BLOCK_MAX + 1)
 
-// Timeout in Linux is 200ms, 200ms / 250us = 800
-#define MAX_RETRIES (200000 / 250)
+// A 32 byte block process at 10MHz is 62.3ms, 80ms should be plenty
+#define MAX_TIMEOUT 80
 
 // PCI slot addresses
 // In order of most to least common
@@ -326,21 +326,30 @@ NTSTATUS:i801_hststs_to_ntstatus(hststs)
     return status;
 }
 
-NTSTATUS:i801_wait_intr(&hststs)
+NTSTATUS:i801_wait_intr(&hststs, size)
 {
-    new retries = 0;
+    // 100 khz period in microseconds
+    const clock_us = 10;
 
+    // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
+    new deadline = get_tick_count() + MAX_TIMEOUT;
+
+    // 10 start bits (start + slave address + rd/wr + ack)
+    // 9 bits per byte (byte + ack)
+    microsleep2((10 + (9 * size)) * clock_us);
     do {
-        microsleep(250);
+        // Only check for result once per clock cycle
+        // Also allows for 1 stop bit
+        microsleep2(clock_us);
         hststs = io_in_byte(SMBHSTSTS);
         hststs &= STATUS_ERROR_FLAGS | SMBHSTSTS_INTR;
         if (!(hststs & SMBHSTSTS_HOST_BUSY) && hststs) {
             hststs &= STATUS_ERROR_FLAGS;
             return STATUS_SUCCESS;
         }
-    } while (((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) && (++retries < MAX_RETRIES));
+    } while (((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) && (get_tick_count() < deadline));
 
-    if (retries >= MAX_RETRIES)
+    if ((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR)))
         return STATUS_IO_TIMEOUT;
 
     hststs &= (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR);
@@ -348,14 +357,14 @@ NTSTATUS:i801_wait_intr(&hststs)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:i801_transaction(xact, &hststs)
+NTSTATUS:i801_transaction(xact, &hststs, size)
 {
     new old_hstcnt = io_in_byte(SMBHSTCNT);
     io_out_byte(SMBHSTCNT, old_hstcnt & ~SMBHSTCNT_INTREN);
 
     io_out_byte(SMBHSTCNT, xact | SMBHSTCNT_START);
 
-    new NTSTATUS:status = i801_wait_intr(hststs);
+    new NTSTATUS:status = i801_wait_intr(hststs, size);
     // restore previous HSTCNT, enabling interrupts if previously enabled
     io_out_byte(SMBHSTCNT, old_hstcnt);
     return status;
@@ -365,6 +374,9 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
 {
     hststs = 0;
     new NTSTATUS:status, len, xact;
+    // We don't know the return size, so lets just wait the minimum amount of time
+    // write lacks repeated address
+    new size = 2 + read_write;
 
     switch (command) {
     case I2C_SMBUS_BLOCK_PROC_CALL:
@@ -380,13 +392,15 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
 
     if (read_write == I2C_SMBUS_WRITE) {
         len = in[0];
+        size += len;
         io_out_byte(SMBHSTDAT0, len);
         io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
         for (new i = 0; i < len; i++)
             io_out_byte(SMBBLKDAT, in[i+1]);
     }
 
-    status = i801_transaction(xact, hststs);
+    // size = command + count + address (read only) + data...
+    status = i801_transaction(xact, hststs, size);
     if (!NT_SUCCESS(status)) {
         goto cleanup;
     }
@@ -420,7 +434,7 @@ Void:i801_set_hstadd(addr, read_write)
 
 NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &hststs)
 {
-    new xact;
+    new xact, size = hstcmd;
 
     switch (command) {
     case I2C_SMBUS_QUICK:
@@ -442,6 +456,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
                 io_out_byte(SMBHSTDAT0, in);
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE_DATA;
+            size += read_write;
         }
     case I2C_SMBUS_WORD_DATA:
         {
@@ -452,6 +467,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             }
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
+            size += read_write;
         }
     case I2C_SMBUS_PROC_CALL:
         {
@@ -461,6 +477,8 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             io_out_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;
+            // This doesn't follow the trend of the other commands matching their size
+            size = 6
         }
     default:
         {
@@ -469,7 +487,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         }
     }
 
-    new NTSTATUS:status = i801_transaction(xact, hststs);
+    new NTSTATUS:status = i801_transaction(xact, hststs, size);
     if (!NT_SUCCESS(status))
         return status;
     
@@ -517,14 +535,14 @@ NTSTATUS:i801_inuse(bool:inuse)
     if (inuse) {
         // Wait for device to be unlocked by BIOS/ACPI
         // Linux doesn't do this, since some BIOSes might not unlock it
-        new retries = 0;
+        new deadline = get_tick_count() + MAX_TIMEOUT;
         new is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
-        while (is_inuse && (++retries < MAX_RETRIES)) {
+        while (is_inuse && (get_tick_count() < deadline)) {
             microsleep(250);
             is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
         }
         
-        if (retries >= MAX_RETRIES) {
+        if (is_inuse) {
             debug_print(''SMBus device is in use by BIOS/ACPI\n'');
             return STATUS_IO_TIMEOUT;
         }
@@ -936,5 +954,8 @@ public NTSTATUS:ioctl_i801_block_process_call(in[], in_size, out[], out_size) {
 }
 
 NTSTATUS:main() {
+    if (get_arch() != ARCH_X64)
+        return STATUS_NOT_SUPPORTED;
+
     return i801_init();
 }

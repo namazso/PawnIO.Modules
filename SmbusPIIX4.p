@@ -48,7 +48,6 @@
 #define I2C_SMBUS_I2C_BLOCK_DATA    8
 
 /* Other settings */
-#define MAX_TIMEOUT		500
 #define  ENABLE_INT9	0
 
 /* PIIX4 constants */
@@ -81,6 +80,10 @@
 #define SMBSHDWCMD	(0x09 + piix4_smba)
 #define SMBSLVEVT	(0x0A + piix4_smba)
 #define SMBSLVDAT	(0x0C + piix4_smba)
+#define SMBTIMING	(0x0E + piix4_smba)
+
+// A 32 byte block read at 10MHz is 32.5ms, 64ms should be plenty
+#define MAX_TIMEOUT 64
 
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
@@ -184,22 +187,34 @@ NTSTATUS:piix4_busy_check()
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:piix4_transaction()
+NTSTATUS:piix4_transaction(size)
 {
     new NTSTATUS:status = STATUS_SUCCESS;
     new temp;
+    new timing = io_in_byte(SMBTIMING);
 
     /* start the transaction by setting bit 6 */
     io_out_byte(SMBHSTCNT, io_in_byte(SMBHSTCNT) | 0x040);
 
     // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
     new deadline = get_tick_count() + MAX_TIMEOUT;
-    // Testing shows we're usually done in 120-160us
-    microsleep2(100);
+
+    // 10 start bits (start + slave address + rd/wr + ack)
+    // 9 bits per byte (byte + ack)
+    // From datasheet: 'Frequency = 66Mhz/(SmBusTiming * 4)' (we flip the division for the period)
+    microsleep2(((10 + (9 * size)) * timing * 4) / 66);
     do {
-        microsleep2(20);
+        // Only check for result once per clock cycle
+        // Also allows for 1 stop bit
+        microsleep2((timing * 4) / 66);
         temp = io_in_byte(SMBHSTSTS);
     } while ((get_tick_count() < deadline) && (temp & 0x01));
+
+    if (temp == 0x02) {
+        // Reset the status flags
+        io_out_byte(SMBHSTSTS, temp);
+        goto check_reset;
+    }
 
     /* If the SMBus is still busy, we give up */
     if (temp & 0x01) {
@@ -223,9 +238,11 @@ NTSTATUS:piix4_transaction()
         debug_print(''Error: no response!\n'');
     }
 
-    if (io_in_byte(SMBHSTSTS) != 0x00)
-        io_out_byte(SMBHSTSTS, io_in_byte(SMBHSTSTS));
+    // Reset the status flags
+    if (temp != 0x00)
+        io_out_byte(SMBHSTSTS, temp);
 
+check_reset:
     if ((temp = io_in_byte(SMBHSTSTS)) != 0x00) {
         debug_print(''Failed reset at end of transaction (%x)\n'', temp);
     }
@@ -235,20 +252,20 @@ NTSTATUS:piix4_transaction()
     return status;
 }
 
-NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
+NTSTATUS:piix4_access_simple(addr, read_write, command, hstcmd, in, &out)
 {
-    new NTSTATUS:status;
+    new NTSTATUS:status, protocol, size = hstcmd;
 
     status = piix4_busy_check();
     if (!NT_SUCCESS(status))
         return status;
 
-    switch (size) {
+    switch (hstcmd) {
     case I2C_SMBUS_QUICK:
         {
             io_out_byte(SMBHSTADD, 
                         (addr << 1) | read_write);
-            size = PIIX4_QUICK;
+            protocol = PIIX4_QUICK;
         }
     case I2C_SMBUS_BYTE:
         {
@@ -256,7 +273,7 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
                         (addr << 1) | read_write);
             if (read_write == I2C_SMBUS_WRITE)
                 io_out_byte(SMBHSTCMD, command);
-            size = PIIX4_BYTE;
+            protocol = PIIX4_BYTE;
         }
     case I2C_SMBUS_BYTE_DATA:
         {
@@ -265,7 +282,8 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE)
                 io_out_byte(SMBHSTDAT0, in);
-            size = PIIX4_BYTE_DATA;
+            protocol = PIIX4_BYTE_DATA;
+            size += read_write;
         }
     case I2C_SMBUS_WORD_DATA:
         {
@@ -276,25 +294,26 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
                 io_out_byte(SMBHSTDAT0, in);
                 io_out_byte(SMBHSTDAT1, in >> 8);
             }
-            size = PIIX4_WORD_DATA;
+            protocol = PIIX4_WORD_DATA;
+            size += read_write;
         }
     default:
         {
-            debug_print(''Unsupported transaction %d\n'', size);
+            debug_print(''Unsupported transaction %d\n'', hstcmd);
             return STATUS_NOT_SUPPORTED;
         }
     }
 
-    io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
+    io_out_byte(SMBHSTCNT, (protocol & 0x1C) + (ENABLE_INT9 & 1));
 
-    status = piix4_transaction();
+    status = piix4_transaction(size);
     if (!NT_SUCCESS(status))
         return status;
 
-    if ((read_write == I2C_SMBUS_WRITE) || (size == PIIX4_QUICK))
+    if ((read_write == I2C_SMBUS_WRITE) || (protocol == PIIX4_QUICK))
         return STATUS_SUCCESS;
 
-    switch (size) {
+    switch (protocol) {
     case PIIX4_BYTE, PIIX4_BYTE_DATA:
         out = io_in_byte(SMBHSTDAT0);
     case PIIX4_WORD_DATA:
@@ -303,15 +322,18 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, size, in, &out)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
+NTSTATUS:piix4_access_block(addr, read_write, command, hstcmd, in[33], out[33])
 {
-    new NTSTATUS:status;
+    new NTSTATUS:status, protocol;
+    // We don't know the return size, so lets just wait the minimum amount of time
+    // write lacks repeated address
+    new size = 2 + read_write;
 
     status = piix4_busy_check();
     if (!NT_SUCCESS(status))
         return status;
 
-    switch (size) {
+    switch (hstcmd) {
     case I2C_SMBUS_BLOCK_DATA:
         {
             io_out_byte(SMBHSTADD,
@@ -319,6 +341,7 @@ NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE) {
                 new len = in[0];
+                size += len;
                 if (len <= 0 || len > I2C_SMBUS_BLOCK_MAX)
                     return STATUS_INVALID_PARAMETER;
                 io_out_byte(SMBHSTDAT0, len);
@@ -326,25 +349,25 @@ NTSTATUS:piix4_access_block(addr, read_write, command, size, in[33], out[33])
                 for (new i = 1; i <= len; i++)
                     io_out_byte(SMBBLKDAT, in[i]);
             }
-            size = PIIX4_BLOCK_DATA;
+            protocol = PIIX4_BLOCK_DATA;
         }
     default:
         {
-            debug_print(''Unsupported transaction %d\n'', size);
+            debug_print(''Unsupported transaction %d\n'', hstcmd);
             return STATUS_NOT_SUPPORTED;
         }
     }
 
-    io_out_byte(SMBHSTCNT, (size & 0x1C) + (ENABLE_INT9 & 1));
+    io_out_byte(SMBHSTCNT, (protocol & 0x1C) + (ENABLE_INT9 & 1));
 
-    status = piix4_transaction();
+    status = piix4_transaction(size);
     if (!NT_SUCCESS(status))
         return status;
 
-    if ((read_write == I2C_SMBUS_WRITE) || (size == PIIX4_QUICK))
+    if (read_write == I2C_SMBUS_WRITE)
         return STATUS_SUCCESS;
 
-    switch (size) {
+    switch (protocol) {
     case PIIX4_BLOCK_DATA:
         {
             new len = io_in_byte(SMBHSTDAT0);

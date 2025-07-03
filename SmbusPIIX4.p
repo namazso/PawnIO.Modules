@@ -85,6 +85,10 @@
 // A 32 byte block read at 10MHz is 32.5ms, 64ms should be plenty
 #define MAX_TIMEOUT 64
 
+#define PIIX4_PCI_BUS      0x00  
+#define PIIX4_PCI_DEVICE   0x14  
+#define PIIX4_PCI_FUNCTION 0x00
+
 new addresses[] = [0x0B00, 0x0B20];
 new piix4_smba = 0x0B00;
 
@@ -94,7 +98,7 @@ NTSTATUS:piix4_init()
 
     // Check that a PCI device at 00:14.0 exists and is an AMD SMBus controller
     new dev_vid;
-    status = pci_config_read_word(0x0, 0x14, 0x0, 0x0, dev_vid);
+    status = pci_config_read_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, 0x00, dev_vid);
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 
@@ -102,7 +106,7 @@ NTSTATUS:piix4_init()
         return STATUS_NOT_SUPPORTED;
 
     new dev_did;
-    status = pci_config_read_word(0x0, 0x14, 0x0, 0x2, dev_did);
+    status = pci_config_read_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, 0x02, dev_did);
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 
@@ -111,7 +115,7 @@ NTSTATUS:piix4_init()
 
     // Check that the device supports MMIO
     new dev_rev;
-    status = pci_config_read_byte(0x0, 0x14, 0x0, 0x8, dev_rev);
+    status = pci_config_read_byte(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, 0x08, dev_rev);
     if (!NT_SUCCESS(status))
         return STATUS_NOT_SUPPORTED;
 
@@ -467,9 +471,9 @@ NTSTATUS:piix4_port_sel(port, &old_port) {
 
 /// Select I2C port on the chipset.
 ///
-/// @param in [0] = Port or -1 for none
+/// @param in [0] = Port or -1 for no change
 /// @param in_size Must be 1
-/// @param out [0] = Old port
+/// @param out [0] = Previous port
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
@@ -493,251 +497,168 @@ public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
     return status;
 }
 
-/// SMBus quick write.
+/// Identify the SMBus controller.
 ///
-/// The SMBus Read/Write Quick protocol (SMBQuick) is typically used to control
-/// simple devices using a device-specific binary command (for example, ON and OFF).
-/// Command values are not used by this protocol and thus only a single element
-/// (at offset 0) can be specified in the field definition.
-///
-/// @param in [0] = Address, [1] = Command
-/// @param in_size Must be 2
-/// @param out Unused
-/// @param out_size Unused
+/// @param out [0] = Type of the SMBus controller, [1] = I/O Base address, [2] = PCI Identifiers
+/// @param out_size Must be 3
 /// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_write_quick(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_write_quick(in[], in_size, out[], out_size) {
-    if (in_size < 2)
+forward NTSTATUS:ioctl_identity(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_identity(in[], in_size, out[], out_size) {
+    if (out_size < 3)
         return STATUS_BUFFER_TOO_SMALL;
 
-    new address = in[0];
-    new command = in[1];
+    new NTSTATUS:status;
 
-    new unused;
+    out[0] = CHAR5_CONST('P', 'I', 'I', 'X', '4');
 
-    return piix4_access_simple(address, command, 0, I2C_SMBUS_QUICK, 0, unused);
-}
+    out[1] = piix4_smba;
 
-/// SMBus byte receive.
-///
-/// The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
-/// byte of data. Like Read/Write Quick, command values are not used by this
-/// protocol and thus only a single element (at offset 0) can be specified in
-/// the field definition.
-///
-/// @param in [0] = Address
-/// @param in_size Must be 1
-/// @param out [0] = Data
-/// @param out_size Must be 1
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_read_byte(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_read_byte(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-
-    return piix4_access_simple(address, I2C_SMBUS_READ, 0, I2C_SMBUS_BYTE, 0, out[0]);
-}
-
-/// SMBus byte send.
-///
-/// The SMBus Send/Receive Byte protocol (SMBSendReceive) transfers a single
-/// byte of data. Like Read/Write Quick, command values are not used by this
-/// protocol and thus only a single element (at offset 0) can be specified in
-/// the field definition.
-///
-/// @param in [0] = Address, [1] = Data
-/// @param in_size Must be 2
-/// @param out Unused
-/// @param out_size Unused
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_write_byte(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_write_byte(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new data = in[1];
-
-    new unused;
-
-    return piix4_access_simple(address, I2C_SMBUS_WRITE, data, I2C_SMBUS_BYTE, 0, unused);
-}
-
-/// SMBus byte read.
-///
-/// The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
-/// data. But unlike Send/Receive Byte, this protocol uses a command value to
-/// reference up to 256 byte-sized virtual registers.
-///
-/// @param in [0] = Address, [1] = Command
-/// @param in_size Must be 2
-/// @param out [0] = Data
-/// @param out_size Must be 1
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_read_byte_data(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_read_byte_data(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new command = in[1];
-
-    return piix4_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, 0, out[0]);
-}
-
-/// SMBus byte write.
-///
-/// The SMBus Read/Write Byte protocol (SMBByte) also transfers a single byte of
-/// data. But unlike Send/Receive Byte, this protocol uses a command value to
-/// reference up to 256 byte-sized virtual registers.
-///
-/// @param in [0] = Address, [1] = Command, [2] = Data
-/// @param in_size Must be 3
-/// @param out Unused
-/// @param out_size Unused
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_write_byte_data(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_write_byte_data(in[], in_size, out[], out_size) {
-    if (in_size < 3)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new command = in[1];
-    new data = in[2];
-
-    new unused;
-
-    return piix4_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, data, unused);
-}
-
-/// SMBus word read.
-///
-/// The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
-/// This protocol also uses a command value to reference up to 256 word-sized
-/// virtual device registers.
-///
-/// @param in [0] = Address, [1] = Command
-/// @param in_size Must be 2
-/// @param out [0] = Data
-/// @param out_size Must be 1
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_read_word_data(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_read_word_data(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new command = in[1];
-
-    return piix4_access_simple(address, I2C_SMBUS_READ, command, I2C_SMBUS_WORD_DATA, 0, out[0]);
-}
-
-/// SMBus word write.
-///
-/// The SMBus Read/Write Word protocol (SMBWord) transfers 2 bytes of data.
-/// This protocol also uses a command value to reference up to 256 word-sized
-/// virtual device registers.
-///
-/// @param in [0] = Address, [1] = Command, [2] = Data
-/// @param in_size Must be 3
-/// @param out Unused
-/// @param out_size Unused
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_write_word_data(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_write_word_data(in[], in_size, out[], out_size) {
-    if (in_size < 3)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new command = in[1];
-    new data = in[2];
-
-    new unused;
-
-    return piix4_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_WORD_DATA, data, unused);
-}
-
-/// SMBus block read.
-///
-/// The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
-/// (0-32 bytes) data. This protocol uses a command value to reference up to 256
-/// block-sized virtual registers.
-///
-/// @param in [0] = Address, [1] = Command
-/// @param in_size Must be 2
-/// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
-/// @param out_size Must be 5
-/// @return An NTSTATUS
-/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_read_block_data(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_read_block_data(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 5)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    new address = in[0];
-    new command = in[1];
-
-    new unused[I2C_SMBUS_BLOCK_MAX + 1];
-    new out_data[I2C_SMBUS_BLOCK_MAX + 1];
-
-    new NTSTATUS:status = piix4_access_block(address, I2C_SMBUS_READ, command, I2C_SMBUS_BLOCK_DATA, unused, out_data);
-
+    // Read the PCI vendor/device ID
+    new pci_ids;
+    status = pci_config_read_dword(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, 0x00, pci_ids);
     if (!NT_SUCCESS(status))
         return status;
 
-    out[0] = out_data[0];
-    pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
+    // Read the PCI subsystem vendor/device ID
+    new pci_subsys_ids;
+    status = pci_config_read_dword(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, 0x2C, pci_subsys_ids);
+    if (!NT_SUCCESS(status))
+        return status;
 
-    return status;
+    out[2] = pci_ids | (pci_subsys_ids << 32);
+
+    return STATUS_SUCCESS;
 }
 
-/// SMBus block write.
+/// Set the SMBus clock frequency.
 ///
-/// The SMBus Read/Write Block protocol (SMBBlock) transfers variable-sized
-/// (0-32 bytes) data. This protocol uses a command value to reference up to 256
-/// block-sized virtual registers.
+/// @param in [0] = Frequency in Hz or -1 for no change
+/// @param in_size Must be 1
+/// @param out [0] = Previous frequency in Hz
+/// @param out_size Must be 1
+/// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
+/// @warning This may cause issues with SMBus devices that expect a specific frequency
+/// @note The default frequency for PIIX4 is 93750Hz (93.75kHz) but may be overridden by the BIOS
+/// @note The minimum frequency configureable for PIIX4 is ~64705Hz (~64.705kHz)
+/// @note The SMBus 1.0 specification allows for frequencies between 10kHz and 100kHz
+/// @note The SMBus 3.0 specification allows for frequencies between 10kHz and 1MHz
+/// @return An NTSTATUS
+forward NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
+    if (out_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+    if (in_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    // From datasheet: 'Frequency = 66Mhz/(SmBusTiming * 4)'
+    out[0] = (66 * 1000000) / (io_in_byte(SMBTIMING) * 4);
+
+    new new_freq = in[0];
+    if (new_freq != -1) {
+        // SMBus 3.0 spec allows for frequencies between 10KHz and 1MHz.
+        // Check if the frequency is valid
+        if (new_freq < 10000 || new_freq > 1000000)
+            return STATUS_INVALID_PARAMETER;
+
+        // Calculate the new timing value
+        new new_timing = (66 * 1000000) / new_freq / 4;
+        if (new_timing < 1 || new_timing > 255)
+            return STATUS_INVALID_PARAMETER;
+
+        io_out_byte(SMBTIMING, new_timing);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/// SMBus transfer.
 ///
-/// @param in [0] = Address, [1] = Command, [2] = Length in bytes, [3..7] = Data (byte packed)
-/// @param in_size Must be 7
-/// @param out Unused
-/// @param out_size Unused
+/// Performs a transfer of data over the SMBus using the specified command.
+/// I2C_SMBUS_QUICK (protocol 0) only requires the address and read/write parameters, command must be left as 0.
+/// I2C_SMBUS_BYTE (1), I2C_SMBUS_BYTE_DATA (2), and I2C_SMBUS_WORD_DATA (3) require the address, read/write, command, and data (write only) parameters.
+/// I2C_SMBUS_BLOCK_DATA (5) requires the address, read/write, command, data as length, and array data parameters.
+///
+/// @param in [0] = Address, [1] = Read(1)/Write(0), [2] = Command, [3] = Protocol, [4] Data, [5..9] = Array Data (byte packed)
+/// @param in_size Must be between 4 and 9
+/// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
+/// @param out_size Must be between 0 and 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_piix4_write_block_data(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_write_block_data(in[], in_size, out[], out_size) {
-    if (in_size < 7)
+forward NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size);
+public NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size) {
+    if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
 
     new address = in[0];
-    new command = in[1];
-    new length = in[2];
+    new read_write = in[1];
+    new command = in[2];
+    new hstcmd = in[3];
+    
+    switch (hstcmd) {
+    case I2C_SMBUS_QUICK:
+        {
+            new unused;
+            return piix4_access_simple(address, read_write, command, hstcmd, 0, unused);
+        }
+    case I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA:
+        {
+            new unused;
+            if (read_write == I2C_SMBUS_WRITE) {
+                if (in_size < 5)
+                    return STATUS_BUFFER_TOO_SMALL;
 
-    if (length > I2C_SMBUS_BLOCK_MAX || length < 1)
-        return STATUS_INVALID_PARAMETER;
+                new data = in[4];
 
-    new in_data[I2C_SMBUS_BLOCK_MAX + 1];
-    in_data[0] = length;
-    unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 3 * 8, 1);
-    new unused[I2C_SMBUS_BLOCK_MAX + 1];
+                return piix4_access_simple(address, read_write, command, hstcmd, data, unused);
+            } else {
+                // read_write == I2C_SMBUS_READ
+                if (out_size < 1)
+                    return STATUS_BUFFER_TOO_SMALL;
 
-    return piix4_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_DATA, in_data, unused);
+                return piix4_access_simple(address, read_write, command, hstcmd, unused, out[0]);
+            }
+        }
+    case I2C_SMBUS_BLOCK_DATA:
+        {
+            if (read_write == I2C_SMBUS_WRITE) {
+                // 5 parameters, 4 cells of data
+                if (in_size < (5 + 4))
+                    return STATUS_BUFFER_TOO_SMALL;
+
+                new length = in[4];
+
+                if (length > I2C_SMBUS_BLOCK_MAX || length < 1)
+                    return STATUS_INVALID_PARAMETER;
+
+                new in_data[I2C_SMBUS_BLOCK_MAX + 1];
+                in_data[0] = length;
+                unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 5 * 8, 1);
+                new unused[I2C_SMBUS_BLOCK_MAX + 1];
+
+                return piix4_access_block(address, read_write, command, hstcmd, in_data, unused);
+            } else {
+                // read_write == I2C_SMBUS_READ
+                if (out_size < 5)
+                    return STATUS_BUFFER_TOO_SMALL;
+
+                new unused[I2C_SMBUS_BLOCK_MAX + 1];
+                new out_data[I2C_SMBUS_BLOCK_MAX + 1];
+
+                new NTSTATUS:status = piix4_access_block(address, read_write, command, hstcmd, unused, out_data);
+
+                if (!NT_SUCCESS(status))
+                    return status;
+
+                out[0] = out_data[0];
+                pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
+
+                return status;
+            }
+        }
+    default:
+        debug_print(''Unsupported transaction %d\n'', hstcmd);
+    }
+    return STATUS_NOT_SUPPORTED;
 }
 
 NTSTATUS:main() {

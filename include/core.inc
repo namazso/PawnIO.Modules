@@ -22,7 +22,14 @@
 #define SIGN_EXTEND16(%1) (SIGN_EXTEND(%1, 16))
 #define SIGN_EXTEND32(%1) (SIGN_EXTEND(%1, 32))
 
-#define CHAR4_CONST(%1,%2,%3,%4) ((%1) | ((%2) << 8)  | ((%3) << 16) | ((%4) << 24))
+#define CHAR1_CONST(%1) (%1)
+#define CHAR2_CONST(%1,%2) (CHAR1_CONST(%1) | ((%2) << 8))
+#define CHAR3_CONST(%1,%2,%3) (CHAR2_CONST(%1, %2) | ((%3) << 16))
+#define CHAR4_CONST(%1,%2,%3,%4) (CHAR3_CONST(%1, %2, %3) | ((%4) << 24))
+#define CHAR5_CONST(%1,%2,%3,%4,%5) (CHAR4_CONST(%1, %2, %3, %4) | ((%5) << 32))
+#define CHAR6_CONST(%1,%2,%3,%4,%5,%6) (CHAR5_CONST(%1, %2, %3, %4, %5) | ((%6) << 40))
+#define CHAR7_CONST(%1,%2,%3,%4,%5,%6,%7) (CHAR6_CONST(%1, %2, %3, %4, %5, %6) | ((%7) << 48))
+#define CHAR8_CONST(%1,%2,%3,%4,%5,%6,%7,%8) (CHAR7_CONST(%1, %2, %3, %4, %5, %6, %7) | ((%8) << 56))
 
 /// Minimum of two numbers.
 ///

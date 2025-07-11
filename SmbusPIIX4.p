@@ -31,6 +31,8 @@
  */
 #define I2C_SMBUS_BLOCK_MAX	32	/* As specified in SMBus standard */
 
+#define SMBUS_LEN_SENTINEL (I2C_SMBUS_BLOCK_MAX + 1)
+
 /* i2c_smbus_xfer read or write markers */
 #define I2C_SMBUS_READ	1
 #define I2C_SMBUS_WRITE	0
@@ -633,6 +635,8 @@ public NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size) {
                 // 4 parameters, 5 cells of data
                 if (in_size < (4 + 5))
                     return STATUS_BUFFER_TOO_SMALL;
+
+                new in_data[I2C_SMBUS_BLOCK_MAX + 1];
 
                 unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX + 1, 4 * 8, 0);
                 new unused[I2C_SMBUS_BLOCK_MAX + 1];

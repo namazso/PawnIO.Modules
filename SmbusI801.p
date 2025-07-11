@@ -680,12 +680,12 @@ public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    out[0] = 100000;
-
     new new_freq = in[0];
     if (new_freq != -1) {
         return STATUS_NOT_SUPPORTED;
     }
+    
+    out[0] = 100000;
 
     return STATUS_SUCCESS;
 }

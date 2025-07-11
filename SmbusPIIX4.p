@@ -549,11 +549,10 @@ public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
         return STATUS_BUFFER_TOO_SMALL;
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
-
-    // From datasheet: 'Frequency = 66Mhz/(SmBusTiming * 4)'
-    out[0] = (66 * 1000000) / (io_in_byte(SMBTIMING) * 4);
-
+        
     new new_freq = in[0];
+    new new_timing = -1;
+
     if (new_freq != -1) {
         // SMBus 3.0 spec allows for frequencies between 10KHz and 1MHz.
         // Check if the frequency is valid
@@ -561,12 +560,19 @@ public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
             return STATUS_INVALID_PARAMETER;
 
         // Calculate the new timing value
-        new new_timing = (66 * 1000000) / new_freq / 4;
+        new_timing = (66 * 1000000) / new_freq / 4;
         if (new_timing < 1 || new_timing > 255)
             return STATUS_INVALID_PARAMETER;
+    }
 
+    // From datasheet: 'Frequency = 66Mhz/(SmBusTiming * 4)'
+    out[0] = (66 * 1000000) / (io_in_byte(SMBTIMING) * 4);
+
+    if (new_timing != -1) {
+        // Set the new timing value
         io_out_byte(SMBTIMING, new_timing);
     }
+
 
     return STATUS_SUCCESS;
 }

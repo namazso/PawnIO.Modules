@@ -17,6 +17,8 @@
 //
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
+#define cellbytes (cellbits / 8)
+
 #define SIGN_EXTEND(%1,%2) (((%1) << (cellbits - (%2))) >> (cellbits - (%2)))
 #define SIGN_EXTEND8(%1) (SIGN_EXTEND(%1, 8))
 #define SIGN_EXTEND16(%1) (SIGN_EXTEND(%1, 16))
@@ -84,6 +86,31 @@ stock Void:pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
         dst[dst_idx / 8] |= byte << ((dst_idx % 8) * 8);
     }
 }
+
+/// Get individual bytes from a cell.
+///
+/// @param src Source cell
+/// @param idx Byte index in cell
+stock get_byte_le(src, idx) {
+    return((src >> ((idx % cellbytes) * 8)) & 0xff);
+}
+
+#define GET_BYTE_LE(%1,%2) (get_byte_le((%1[(%2) / cellbytes]), ((%2) % cellbytes)))
+
+
+/// Set an individual byte in a cell.
+///
+/// @param dst Destination cell
+/// @param idx Byte index in cell
+/// @param val Byte value to set
+stock set_byte_le(&dst, idx, val) {
+    new shift = ((idx % cellbytes) * 8);
+    dst &= ~(0xff << shift);
+    dst |= ((val & 0xff) << shift);
+}
+
+#define SET_BYTE_LE(%1,%2,%3) (set_byte_le((%1[(%2) / cellbytes]), ((%2) % cellbytes), (%3)))
+
 
 /// Executed on module unload.
 forward NTSTATUS:unload();

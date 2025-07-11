@@ -696,10 +696,10 @@ public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
 /// I2C_SMBUS_QUICK (protocol 0) only requires the address and read/write parameters, command must be left as 0.
 /// I2C_SMBUS_BYTE (1), I2C_SMBUS_BYTE_DATA (2), and I2C_SMBUS_WORD_DATA (3) require the address, read/write, command, and data (write only) parameters.
 /// I2C_SMBUS_PROC_CALL (4) requires the address, command, and data parameters.
-/// I2C_SMBUS_BLOCK_DATA (5) requires the address, read/write, command, data as length, and array data parameters.
-/// I2C_SMBUS_BLOCK_PROC_CALL (7) requires the address, command, data as length, and array data parameters.
+/// I2C_SMBUS_BLOCK_DATA (5) requires the address, read/write, command, data parameters.
+/// I2C_SMBUS_BLOCK_PROC_CALL (7) requires the address, command, data parameters.
 ///
-/// @param in [0] = Address, [1] = Read(1)/Write(0), [2] = Command, [3] = Protocol, [4] Data, [5..9] = Array Data (byte packed)
+/// @param in [0] = Address, [1] = Read(1)/Write(0), [2] = Command, [3] = Protocol, [4..9] Data
 /// @param in_size Must be between 4 and 9
 /// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
 /// @param out_size Must be between 0 and 5
@@ -742,18 +742,13 @@ public NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size) {
     case I2C_SMBUS_BLOCK_DATA:
         {
             if (read_write == I2C_SMBUS_WRITE) {
-                // 5 parameters, 4 cells of data
-                if (in_size < (5 + 4))
+                // 4 parameters, 5 cells of data
+                if (in_size < (4 + 5))
                     return STATUS_BUFFER_TOO_SMALL;
 
-                new length = in[4];
-
-                if (length > I2C_SMBUS_BLOCK_MAX || length < 1)
-                    return STATUS_INVALID_PARAMETER;
-
                 new in_data[I2C_SMBUS_BLOCK_MAX + 1];
-                in_data[0] = length;
-                unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 5 * 8, 1);
+                unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX + 1, 4 * 8, 0);
+
                 new unused[I2C_SMBUS_BLOCK_MAX + 1];
 
                 return i801_access_block(address, read_write, command, hstcmd, in_data, unused);
@@ -790,20 +785,14 @@ public NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size) {
         }
     case I2C_SMBUS_BLOCK_PROC_CALL:
         {
-            // 5 parameters, 4 cells of data
-            if (in_size < (5 + 4))
+            // 4 parameters, 5 cells of data
+            if (in_size < (4 + 5))
                 return STATUS_BUFFER_TOO_SMALL;
             if (out_size < 5)
                 return STATUS_BUFFER_TOO_SMALL;
 
-            new length = in[4];
-
-            if (length > I2C_SMBUS_BLOCK_MAX || length < 0)
-                return STATUS_INVALID_PARAMETER;
-
             new in_data[I2C_SMBUS_BLOCK_MAX + 1];
-            in_data[0] = length;
-            unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX, 5 * 8, 1);
+            unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX + 1, 4 * 8, 0);
 
             new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 

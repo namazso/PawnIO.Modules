@@ -65,8 +65,8 @@ stock _max(a, b) {
 stock Void:unpack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
     for (new i = 0; i < size; i++) {
         new src_idx = src_offs + i;
-        new src_cell = src[src_idx / 8];
-        new byte = (src_cell >> ((src_idx % 8) * 8)) & 0xff;
+        new src_cell = src[src_idx / cellbytes];
+        new byte = (src_cell >> ((src_idx % cellbytes) * 8)) & 0xff;
         dst[dst_offs + i] = byte;
     }
 }
@@ -82,8 +82,8 @@ stock Void:pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
     for (new i = 0; i < size; i++) {
         new byte = src[src_offs + i] & 0xff;
         new dst_idx = dst_offs + i;
-        dst[dst_idx / 8] &= ~(0xff << ((dst_idx % 8) * 8));
-        dst[dst_idx / 8] |= byte << ((dst_idx % 8) * 8);
+        dst[dst_idx / cellbytes] &= ~(0xff << ((dst_idx % cellbytes) * 8));
+        dst[dst_idx / cellbytes] |= byte << ((dst_idx % cellbytes) * 8);
     }
 }
 
@@ -111,6 +111,26 @@ stock set_byte_le(&dst, idx, val) {
 
 #define SET_BYTE_LE(%1,%2,%3) (set_byte_le((%1[(%2) / cellbytes]), ((%2) % cellbytes), (%3)))
 
+/// Define an IOCTL function.
+/// @param %1 Name of the IOCTL function, must start with ioctl_
+#define DEFINE_IOCTL(%1) \
+    forward NTSTATUS:%1(in[], in_size, out[], out_size); \
+    public NTSTATUS:%1(in[], in_size, out[], out_size)
+
+/// Define an IOCTL function with static buffer sizes.
+/// @param %1 Name of the IOCTL function, must start with ioctl_
+/// @param %2 Size of the input buffer
+/// @param %3 Size of the output buffer
+#define DEFINE_IOCTL_SIZED(%1,%2,%3) \
+    forward NTSTATUS:%1(in[%2], in_size, out[%3], out_size); \
+    public NTSTATUS:%1(in[%2], in_size, out[%3], out_size) \
+        if (in_size != (%2)) \
+            return STATUS_INVALID_PARAMETER; \
+        else if (out_size != (%3)) \
+            return STATUS_INVALID_PARAMETER; \
+        else
+
+NTSTATUS:main();
 
 /// Executed on module unload.
 forward NTSTATUS:unload();

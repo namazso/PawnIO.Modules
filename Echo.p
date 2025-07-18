@@ -26,11 +26,7 @@
 /// @param out Bitwise not of Value
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_not(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_not(in[], in_size, out[], out_size) {
-    if (in_size != 1 || out_size != 1)
-        return STATUS_INVALID_PARAMETER;
-
+DEFINE_IOCTL_SIZED(ioctl_not, 1, 1) {
     new v = in[0];
 
     debug_print(''Inverting %x'', v);

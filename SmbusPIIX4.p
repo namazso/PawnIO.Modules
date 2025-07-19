@@ -485,13 +485,7 @@ NTSTATUS:piix4_port_sel(port, &old_port) {
 /// @warning Changing to port 2, 3, or 4 may break other software expecting to be using port 0
 /// @note Port 1 uses a different base address, and should not break other software expecting another port
 /// @note Ports 3 and 4 are marked as reserved in the datasheet, use at your own risk
-forward NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_piix4_port_sel, 1, 1) {
     new new_port = in[0];
     new old_port = -1;
 
@@ -504,14 +498,12 @@ public NTSTATUS:ioctl_piix4_port_sel(in[], in_size, out[], out_size) {
 
 /// Identify the SMBus controller.
 ///
+/// @param in Unused
+/// @param in_size Unused
 /// @param out [0] = Type of the SMBus controller, [1] = I/O Base address, [2] = PCI Identifiers
 /// @param out_size Must be 3
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_identity(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_identity(in[], in_size, out[], out_size) {
-    if (out_size < 3)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_identity, 0, 3) {
     new NTSTATUS:status;
 
     out[0] = CHAR5_CONST('P', 'I', 'I', 'X', '4');
@@ -548,8 +540,7 @@ public NTSTATUS:ioctl_identity(in[], in_size, out[], out_size) {
 /// @note The SMBus 1.0 specification allows for frequencies between 10kHz and 100kHz
 /// @note The SMBus 3.0 specification allows for frequencies between 10kHz and 1MHz
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
+DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (in_size < 1)
@@ -595,8 +586,7 @@ public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
 /// @param out_size Must be between 0 and 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size) {
+DEFINE_IOCTL(ioctl_smbus_xfer) {
     if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
 

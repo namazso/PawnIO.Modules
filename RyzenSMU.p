@@ -376,10 +376,7 @@ new g_table_base;
 /// @param out_size Must be 2
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward NTSTATUS:ioctl_resolve_pm_table(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
-    if (out_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
+DEFINE_IOCTL_SIZED(ioctl_resolve_pm_table, 0, 2) {
     new version;
     new NTSTATUS:status = get_pm_table_version(version);
     if (!NT_SUCCESS(status))
@@ -407,8 +404,7 @@ public NTSTATUS:ioctl_resolve_pm_table(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward NTSTATUS:ioctl_update_pm_table(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_update_pm_table(in[], in_size, out[], out_size) {
+DEFINE_IOCTL_SIZED(ioctl_update_pm_table, 0, 0) {
     return transfer_table_to_dram();
 }
 
@@ -416,11 +412,12 @@ public NTSTATUS:ioctl_update_pm_table(in[], in_size, out[], out_size) {
 ///
 /// @param in Unused
 /// @param in_size Unused
-/// @param out Unused
-/// @param out_size Unused
+/// @param out Table contents
+/// @param out_size How much of the table to read
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_read_pm_table(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_read_pm_table(in[], in_size, out[], out_size) {
+DEFINE_IOCTL(ioctl_read_pm_table) {
+    if (out_size < 1)
+        return STATUS_BUFFER_TOO_SMALL;
     if (!g_table_base)
         return STATUS_DEVICE_NOT_READY;
     new read_count = _min(out_size, PAGE_SIZE / 8);
@@ -451,11 +448,7 @@ public NTSTATUS:ioctl_read_pm_table(in[], in_size, out[], out_size) {
 /// @param out [0] = Code name integer
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_get_code_name(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_get_code_name(in[], in_size, out[], out_size) {
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_get_code_name, 0, 1) {
     out[0] = _:g_code_name;
     return STATUS_SUCCESS;
 }
@@ -468,11 +461,7 @@ public NTSTATUS:ioctl_get_code_name(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward NTSTATUS:ioctl_get_smu_version(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_get_smu_version(in[], in_size, out[], out_size) {
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_get_smu_version, 0, 1) {
     new args[6];
     args[0] = 1;
     new NTSTATUS:status = send_command(0x02, args);

@@ -130,10 +130,6 @@ NTSTATUS:main() {
 /// @param out [0] = The status register value
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_amd_reset_status(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_amd_reset_status(in[], in_size, out[], out_size) {
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_amd_reset_status, 0, 1) {
     return amd_reset_status(out[0]);
 }

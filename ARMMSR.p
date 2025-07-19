@@ -38,11 +38,7 @@ bool:is_allowed_msr_read(msr) {
 /// @param out [0] = Value read
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size) {
-    if (in_size != 1 || out_size != 1)
-        return STATUS_INVALID_PARAMETER;
-
+DEFINE_IOCTL_SIZED(ioctl_read_msr, 1, 1) {
     new msr = in[0] & 0xFFFFFFFF;
 
     if (!is_allowed_msr_read(msr))

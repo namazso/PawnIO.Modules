@@ -271,8 +271,7 @@ NTSTATUS:comm_init_lpc() {
     return STATUS_SUCCESS;
 }
 
-forward NTSTATUS:ioctl_ec_command(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_ec_command(in[], in_size, out[], out_size) {
+DEFINE_IOCTL(ioctl_ec_command) {
     if (in_size < 3 || out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -290,8 +289,7 @@ public NTSTATUS:ioctl_ec_command(in[], in_size, out[], out_size) {
     return STATUS_NOT_SUPPORTED;
 }
 
-forward NTSTATUS:ioctl_ec_readmem(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_ec_readmem(in[], in_size, out[], out_size) {
+DEFINE_IOCTL(ioctl_ec_readmem) {
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)

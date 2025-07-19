@@ -31,13 +31,7 @@ is_port_allowed(port) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_EC" mutant before calling this
-forward NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_pio_read, 1, 1) {
     new port = in[0] & 0xFFFF;
 
     if (!is_port_allowed(port))
@@ -55,11 +49,7 @@ public NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size) {
 /// @param out_size Unused
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_EC" mutant before calling this
-forward NTSTATUS:ioctl_pio_write(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_pio_write(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_pio_write, 2, 0) {
     new port = in[0] & 0xFFFF;
     new value = in[1];
 

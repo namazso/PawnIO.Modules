@@ -199,14 +199,7 @@ detect_chip() {
     // unknown, just leave it as 0
 }
 
-forward NTSTATUS:ioctl_detect(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_detect(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_detect, 1, 1) {
     reset();
 
     new slot = in[0];
@@ -230,13 +223,7 @@ public NTSTATUS:ioctl_detect(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward NTSTATUS:ioctl_read(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_read(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_read, 1, 1) {
     new reg = in[0] & 0xFF;
 
     if (!is_ready())
@@ -246,11 +233,7 @@ public NTSTATUS:ioctl_read(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward NTSTATUS:ioctl_write(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_write(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_write, 2, 0) {
     new reg = in[0] & 0xFF;
     new val = in[1] & 0xFF;
 
@@ -261,8 +244,7 @@ public NTSTATUS:ioctl_write(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward NTSTATUS:ioctl_enter(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_enter(in[], in_size, out[], out_size) {
+DEFINE_IOCTL_SIZED(ioctl_enter, 0, 0) {
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
 
@@ -280,8 +262,7 @@ public NTSTATUS:ioctl_enter(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward NTSTATUS:ioctl_exit(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_exit(in[], in_size, out[], out_size) {
+DEFINE_IOCTL_SIZED(ioctl_exit, 0, 0) {
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
 
@@ -315,13 +296,7 @@ is_port_allowed(port) {
     return valid;
 }
 
-forward NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_pio_read, 1, 1) {
     new port = in[0] & 0xFFFF;
 
     if (!is_ready())
@@ -334,11 +309,7 @@ public NTSTATUS:ioctl_pio_read(in[], in_size, out[], out_size) {
     return STATUS_SUCCESS;
 }
 
-forward NTSTATUS:ioctl_pio_write(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_pio_write(in[], in_size, out[], out_size) {
-    if (in_size < 2)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_pio_write, 2, 0) {
     new port = in[0] & 0xFFFF;
     new value = in[1];
 
@@ -483,13 +454,7 @@ NTSTATUS:set_gigabyte_controller(enable, &old) {
     return status;
 }
 
-forward NTSTATUS:ioctl_set_gigabyte_controller(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_set_gigabyte_controller(in[], in_size, out[], out_size) {
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_set_gigabyte_controller, 1, 1) {
     new value = in[0];
 
     if (!is_ready())

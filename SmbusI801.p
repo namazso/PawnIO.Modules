@@ -634,14 +634,12 @@ unlock:
 
 /// Identify the SMBus controller.
 ///
+/// @param in Unused
+/// @param in_size Unused
 /// @param out [0] = Type of the SMBus controller, [1] = I/O Base address, [2] = PCI Identifiers
 /// @param out_size Must be 3
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_identity(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_identity(in[], in_size, out[], out_size) {
-    if (out_size < 3)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_identity, 0, 3) {
     new NTSTATUS:status;
 
     out[0] = CHAR4_CONST('i', '8', '0', '1');
@@ -673,13 +671,7 @@ public NTSTATUS:ioctl_identity(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @note The i801 SMBus controller use a fixed clock frequency of 100kHz.
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
-    if (out_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-    if (in_size < 1)
-        return STATUS_BUFFER_TOO_SMALL;
-
+DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
     new new_freq = in[0];
     if (new_freq != -1) {
         return STATUS_NOT_SUPPORTED;
@@ -705,8 +697,7 @@ public NTSTATUS:ioctl_clock_freq(in[], in_size, out[], out_size) {
 /// @param out_size Must be between 0 and 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_smbus_xfer(in[], in_size, out[], out_size) {
+DEFINE_IOCTL(ioctl_smbus_xfer) {
     if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
 

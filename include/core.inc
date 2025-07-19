@@ -124,9 +124,7 @@ stock set_byte_le(&dst, idx, val) {
 #define DEFINE_IOCTL_SIZED(%1,%2,%3) \
     forward NTSTATUS:%1(in[%2], in_size, out[%3], out_size); \
     public NTSTATUS:%1(in[%2], in_size, out[%3], out_size) \
-        if (in_size != (%2)) \
-            return STATUS_INVALID_PARAMETER; \
-        else if (out_size != (%3)) \
+        if (((%2) != 0 && in_size != (%2)) || ((%3) != 0 && out_size != (%3))) \
             return STATUS_INVALID_PARAMETER; \
         else
 

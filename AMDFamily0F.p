@@ -50,11 +50,7 @@ bool:is_allowed_msr_read(msr) {
 /// @param out [0] = Value read
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size) {
-    if (in_size != 1 || out_size != 1)
-        return STATUS_INVALID_PARAMETER;
-
+DEFINE_IOCTL_SIZED(ioctl_read_msr, 1, 1) {
     new msr = in[0] & 0xFFFFFFFF;
 
     if (!is_allowed_msr_read(msr))
@@ -76,11 +72,7 @@ public NTSTATUS:ioctl_read_msr(in[], in_size, out[], out_size) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
-forward NTSTATUS:ioctl_get_thermtrip(in[], in_size, out[], out_size);
-public NTSTATUS:ioctl_get_thermtrip(in[], in_size, out[], out_size) {
-    if (in_size < 2 || out_size < 1)
-        return STATUS_INVALID_PARAMETER;
-
+DEFINE_IOCTL_SIZED(ioctl_get_thermtrip, 2, 1) {
     new cpu_idx = in[0];
     if (cpu_idx > 1)
         return STATUS_INVALID_PARAMETER;

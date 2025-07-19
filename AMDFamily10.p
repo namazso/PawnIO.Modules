@@ -66,7 +66,14 @@ resolve_cstates_io_offset() {
     }
 }
 
-// This should probably have an associated mutant?
+/// Get CState residency.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out [0..1] = CState residency of C0 and C1 respectively
+/// @param out_size Must be 2
+/// @return An NTSTATUS
+/// @warning This should probably have an associated mutant? But LHM doesn't have one...
 DEFINE_IOCTL_SIZED(ioctl_read_cstate_residency, 0, 2) {
     if (g_cstates_io_offset == 0)
         return STATUS_NOT_SUPPORTED;
@@ -88,6 +95,13 @@ bool:is_allowed_miscctl_offset(didvid, offset) {
     return false;
 }
 
+/// Read from a MISCCTL offset.
+///
+/// @param in [0] = CPU index, [1] = Offset
+/// @param in_size Must be 2
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_read_miscctl, 2, 1) {
     new cpu_idx = in[0];
     new offset = in[1];
@@ -110,11 +124,15 @@ DEFINE_IOCTL_SIZED(ioctl_read_miscctl, 2, 1) {
     return STATUS_SUCCESS;
 }
 
-/// WARNING: You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+/// Read from SMU.
+///
+/// @param in [0] = Offset
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_read_smu, 1, 1) {
-    if (in_size != 1 || out_size != 1)
-        return STATUS_INVALID_PARAMETER;
-    
     new model_group = g_model & 0xF0;
     if (g_family != 0x15 || (model_group != 0x60 && model_group != 0x70))
         return STATUS_NOT_SUPPORTED;
@@ -138,6 +156,13 @@ DEFINE_IOCTL_SIZED(ioctl_read_smu, 1, 1) {
     return STATUS_SUCCESS;
 }
 
+/// Measure TSC multiplier.
+///
+/// @param in Unused
+/// @param in_size Unused
+/// @param out [0] = Performance event count during a tick, [1] = COFVID status
+/// @param out_size Must be 2
+/// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_measure_tsc_multiplier, 0, 2) {
     new ras[4];
     cpuid(0x80000007, 0, ras);
@@ -167,14 +192,14 @@ DEFINE_IOCTL_SIZED(ioctl_measure_tsc_multiplier, 0, 2) {
     new tick_end = tick_start + 1;
 
     // wait for next tick
-    while (get_tick_count() != tick_start) {}
+    while (get_tick_count() < tick_start) {}
 
     // read current event ctr
     new ctr_start;
     msr_read(MSR_K7_PERFCTR0, ctr_start);
     
     // wait for next tick
-    while (get_tick_count() != tick_end) {}
+    while (get_tick_count() < tick_end) {}
     
     // read current event ctr
     new ctr_end;
@@ -210,6 +235,13 @@ bool:is_allowed_msr_read(msr) {
     return false;
 }
 
+/// Read MSR.
+///
+/// @param in [0] = MSR
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_read_msr, 1, 1) {
     new msr = in[0] & 0xFFFFFFFF;
 

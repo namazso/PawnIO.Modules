@@ -376,14 +376,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
 /// @param out [0] = Type of the SMBus controller, [1] = I/O Base address, [2] = PCI vendor/device ID, subsystem vendor/device ID
 /// @param out_size Must be 3
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_identity(in[1], in_size, out[3], out_size);
-public NTSTATUS:ioctl_identity(in[1], in_size, out[3], out_size)
-{
-    if (out_size < 3)
-    {
-        return STATUS_BUFFER_TOO_SMALL;
-    }
-
+DEFINE_IOCTL_SIZED(ioctl_identity, 0, 3) {
     /* Fill in driver name */
     out[0] = driver_name;
 
@@ -404,14 +397,7 @@ public NTSTATUS:ioctl_identity(in[1], in_size, out[3], out_size)
 /// @param out_size Must be 1
 /// @note The NCT6793 controller use a fixed clock frequency.
 /// @return An NTSTATUS
-forward NTSTATUS:ioctl_clock_freq(in[1], in_size, out[1], out_size);
-public NTSTATUS:ioctl_clock_freq(in[1], in_size, out[1], out_size)
-{
-    if(in_size < 1 || out_size < 1)
-    {
-        return STATUS_BUFFER_TOO_SMALL;
-    }
-
+DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
     /* Read previous frequency */
     out[0] = k_clock_vals[(io_in_byte(SMBHSTCLK) & 0xF)];
 
@@ -449,14 +435,7 @@ public NTSTATUS:ioctl_clock_freq(in[1], in_size, out[1], out_size)
 /// @param out_size Must be between 0 and 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-forward NTSTATUS:ioctl_smbus_xfer(in[9], in_size, out[5], out_size);
-public NTSTATUS:ioctl_smbus_xfer(in[9], in_size, out[5], out_size)
-{
-    if(in_size < 9 || out_size < 5)
-    {
-        return STATUS_BUFFER_TOO_SMALL;
-    }
-
+DEFINE_IOCTL_SIZED(ioctl_smbus_xfer, 9, 5) {
     /* Extract data fields from input */
     new address     = in[0];
     new read_write  = in[1];

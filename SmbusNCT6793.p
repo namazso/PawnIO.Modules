@@ -97,6 +97,8 @@ new nuvoton_nct6793_smba    = 0;
 new driver_name             = 0;
 new smbus_clock             = 0;
 
+new const k_clock_vals[16] = [365000, 261000, 200000, 162000, 136000, 117000, 103000, 99000, 83000, 76000, 71000, 65000, 61000, 57000, 53000, 47000];
+
 superio_enter(addr)
 {
     io_out_byte(addr, 0x87);
@@ -409,11 +411,9 @@ public NTSTATUS:ioctl_clock_freq(in[1], in_size, out[1], out_size)
     {
         return STATUS_BUFFER_TOO_SMALL;
     }
-    
-    new clock_vals[16] = [365000, 261000, 200000, 162000, 136000, 117000, 103000, 99000, 83000, 76000, 71000, 65000, 61000, 57000, 53000, 47000];
 
     /* Read previous frequency */
-    out[0] = clock_vals[(io_in_byte(SMBHSTCLK) & 0xF)];
+    out[0] = k_clock_vals[(io_in_byte(SMBHSTCLK) & 0xF)];
 
     /* If not -1, try to write new frequency */
     if(in[0] != -1)
@@ -421,7 +421,7 @@ public NTSTATUS:ioctl_clock_freq(in[1], in_size, out[1], out_size)
         /* Check if new frequency matches any supported frequency */
         for(new i = 0; i < 16; i++)
         {
-            if(in[0] == clock_vals[i])
+            if(in[0] == k_clock_vals[i])
             {
                 smbus_clock = i;
                 io_out_byte(SMBHSTCLK, smbus_clock);

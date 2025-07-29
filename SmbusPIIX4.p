@@ -84,7 +84,9 @@
 #define SMBSLVDAT	(0x0C + piix4_smba)
 #define SMBTIMING	(0x0E + piix4_smba)
 
-// A 32 byte block read at 10MHz is 32.5ms, 64ms should be plenty
+/* The SMBus spec allows for clock stretching down to 10MHz */
+/* In a worse case scenario a 32 byte block read at 10MHz could take ~32.5ms */
+/* 64ms seems like a reasonable timeout, so we use that */
 #define MAX_TIMEOUT 64
 
 #define PIIX4_PCI_BUS      0x00  

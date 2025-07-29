@@ -116,7 +116,9 @@
 
 #define SMBUS_LEN_SENTINEL (I2C_SMBUS_BLOCK_MAX + 1)
 
-// A 32 byte block process at 10MHz is 62.3ms, 80ms should be plenty
+/* The SMBus spec allows for clock stretching down to 10MHz */
+/* In a worse case scenario a 32 byte block process at 10MHz could take ~62.3ms */
+/* 80ms seems like a reasonable timeout, so we use that */
 #define MAX_TIMEOUT 80
 
 // PCI slot addresses

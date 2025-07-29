@@ -88,10 +88,11 @@
 #define I2C_SMBUS_BLOCK_PROC_CALL   7       /* SMBus 2.0                        */
 #define I2C_SMBUS_I2C_BLOCK_DATA    8
 
-/* Each retry happens after 250us, and a FIFO of 4 bytes (A+RW, IDX, LEN, 32 DATA) takes at most 0.7ms at 100KHz */
-/* A full 32-byte block requires waiting 4 bytes at a time before refilling the 4-byte FIFO */
-/* Allow up to 2ms wait, or 8 retries */
-#define MAX_TIMEOUT                 2
+/* The SMBus spec allows for clock stretching down to 10MHz */
+/* In a worse case scenario a read word data (48 bits) at 10MHz could take ~4.8ms */
+/* A full 32-byte block only requires waiting 4 bytes + acks (36 bits) at a time before refilling the 4-byte FIFO */
+/* 8ms seems like a reasonable timeout, so we use that */
+#define MAX_TIMEOUT                 8
 
 new nuvoton_nct6793_smba    = 0;
 new driver_name             = 0;

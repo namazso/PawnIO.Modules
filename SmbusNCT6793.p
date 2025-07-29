@@ -91,7 +91,7 @@
 /* Each retry happens after 250us, and a FIFO of 4 bytes (A+RW, IDX, LEN, 32 DATA) takes at most 0.7ms at 100KHz */
 /* A full 32-byte block requires waiting 4 bytes at a time before refilling the 4-byte FIFO */
 /* Allow up to 2ms wait, or 8 retries */
-#define MAX_RETRIES                 8
+#define MAX_TIMEOUT                 2
 
 new nuvoton_nct6793_smba    = 0;
 new driver_name             = 0;
@@ -182,7 +182,9 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     new cnt;
     new i;
     new len;
-    new timeout;
+    new deadline;
+    new clock_us;
+    new data_size = size;
 
     /* Perform soft reset of SMBus controller */
     io_out_byte(SMBHSTCTL, NCT6793_SOFT_RESET);
@@ -192,6 +194,9 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     {
         io_out_byte(SMBHSTCLK, smbus_clock);
     }
+
+    /* Clock period in microseconds */
+    clock_us = 1000000 / k_clock_vals[io_in_byte(SMBHSTCLK) & 0xF];
 
     switch(size)
     {
@@ -211,6 +216,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
                 {
                     io_out_byte(SMBHSTCMD, NCT6793_READ_BYTE);
                 }
+                data_size += read_write;
             }
 
         case I2C_SMBUS_WORD_DATA:
@@ -230,10 +236,13 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
                 {
                     io_out_byte(SMBHSTCMD, NCT6793_READ_WORD);
                 }
+                data_size += read_write;
             }
 
         case I2C_SMBUS_BLOCK_DATA:
             {
+                data_size = len;
+
                 /* Write the address + RW into SMBHSTADD, the command into SMBHSTIDX */
                 io_out_byte(SMBHSTADD, (addr << 1) | read_write);
                 io_out_byte(SMBHSTIDX, command);
@@ -294,16 +303,16 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     {
         if(read_write == I2C_SMBUS_WRITE)
         {
-            timeout = 0;
+            deadline = get_tick_count() + MAX_TIMEOUT;
             while((io_in_byte(SMBHSTSTS) & NCT6793_FIFO_EMPTY) == 0)
             {
-                if(timeout > MAX_RETRIES)
+                if(get_tick_count() > deadline)
                 {
                     return STATUS_TIMEOUT;
                 }
 
-                microsleep2(250);
-                timeout++;
+                /* Check status once per clock cycle */
+                microsleep2(clock_us);
             }
 
             /* Load more bytes into FIFO */
@@ -313,6 +322,9 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
                 {
                     io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
                 }
+
+                /* Wait for 4 bytes + acks (9) to be sent */
+                microsleep2(4 * 9 * clock_us);
 
                 len -= 4;
                 cnt += 4;
@@ -324,22 +336,32 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
                     io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
                 }
 
+                /* Wait for the last bytes + acks (9) to be sent */
+                microsleep2(len * 9 * clock_us);
+
                 len = 0;
             }
         }
     }
 
     /* Wait for manual mode to complete */
-    timeout = 0;
+    /* Block data is a bit different, but we can precalculate the others */
+    if (size != I2C_SMBUS_BLOCK_DATA)
+    {
+        /* minimum 11 bits (start + slave address + rd/wr + ack + stop) then 9 bits per byte (byte + ack) */
+        microsleep2((11 + (size * 9)) * clock_us);
+    }
+
+    deadline = get_tick_count() + MAX_TIMEOUT;
     while((io_in_byte(SMBHSTSTS) & NCT6793_MANUAL_ACTIVE) != 0)
     {
-        if(timeout > MAX_RETRIES)
+        if(get_tick_count() > deadline)
         {
             return STATUS_TIMEOUT;
         }
 
-        microsleep2(250);
-        timeout++;
+        // Check status once per clock cycle
+        microsleep2(clock_us);
     }
 
     /* Check if transmission not acked */

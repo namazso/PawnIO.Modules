@@ -51,6 +51,16 @@ stock _max(a, b) {
     return a > b ? a : b;
 }
 
+/// Divide two numbers and round up.
+///
+/// @param a Dividend
+/// @param b Divisor
+/// @return The result of the division, rounded up
+/// @note The divide operator, "/", rounds downwards
+stock _ceil_div(a, b) {
+    return (a + b - 1) / b;
+}
+
 #define PAGE_SIZE (0x1000)
 
 #define BIT(%1) (1 << (%1))

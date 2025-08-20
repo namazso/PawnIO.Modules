@@ -277,13 +277,17 @@ DEFINE_IOCTL(ioctl_ec_command) {
         return STATUS_BUFFER_TOO_SMALL;
 
     new NTSTATUS:status;
+    new result;
     new version = in[0];
     new command = in[1];
+    /*
+     * ec_out_* and ec_in_* are outgoing and incoming to the EC.
+     * They are flipped from the in and out parameters to this function.
+     */
     new ec_out_size = in[2];
     new ec_in_size = in[3];
-    new in_data[EC_LPC_HOST_PACKET_SIZE];
-    new out_data[EC_LPC_HOST_PACKET_SIZE];
-    new result;
+    new ec_out_data[EC_LPC_HOST_PACKET_SIZE];
+    new ec_in_data[EC_LPC_HOST_PACKET_SIZE];
 
     if (in_size < 4 + _ceil_div(ec_out_size, 8))
         return STATUS_BUFFER_TOO_SMALL;
@@ -296,15 +300,15 @@ DEFINE_IOCTL(ioctl_ec_command) {
         return STATUS_INVALID_PARAMETER;
 
     if (ec_command_proto == 3) {
-        unpack_bytes_le(in, in_data, ec_out_size, 4 * 8, 0);
+        unpack_bytes_le(in, ec_out_data, ec_out_size, 4 * 8, 0);
 
-        status = ec_command_lpc_3(command, version, in_data, ec_out_size, out_data, ec_in_size, result);
+        status = ec_command_lpc_3(command, version, ec_out_data, ec_out_size, ec_in_data, ec_in_size, result);
         if (status != STATUS_SUCCESS)
             return status;
 
         out[0] = result;
         if (result >= 0)
-            pack_bytes_le(out_data, out, ec_in_size, 0, 8);
+            pack_bytes_le(ec_in_data, out, ec_in_size, 0, 8);
         return STATUS_SUCCESS;
     }
 

@@ -207,16 +207,8 @@ NTSTATUS:ec_readmem_lpc(offset, bytes, dest[]) {
     if ((offset + bytes) >= EC_MEMMAP_SIZE)
         return STATUS_INVALID_PARAMETER;
 
-    if (bytes <= EC_MEMMAP_SIZE) { /* fixed length */
-        for (new i = 0; i < bytes; i++)
-            dest[i] = io_in_byte(memmap_addr + offset + i);
-    } else { /* string */
-        for (new i = 0; i < EC_MEMMAP_SIZE; i++) {
-            dest[i] = io_in_byte(memmap_addr + offset + i);
-            if (!dest[i])
-                break;
-        }
-    }
+    for (new i = 0; i < bytes; i++)
+        dest[i] = io_in_byte(memmap_addr + offset + i);
 
     return STATUS_SUCCESS;
 }
@@ -328,7 +320,6 @@ DEFINE_IOCTL(ioctl_ec_command) {
 DEFINE_IOCTL(ioctl_ec_readmem) {
     if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
-
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -338,6 +329,8 @@ DEFINE_IOCTL(ioctl_ec_readmem) {
     new out_data[EC_MEMMAP_SIZE];
 
     if (out_size < _ceil_div(bytes, 8))
+        return STATUS_BUFFER_TOO_SMALL;
+    if (bytes > out_size * 8)
         return STATUS_BUFFER_TOO_SMALL;
 
     status = ec_readmem_lpc(offset, bytes, out_data);

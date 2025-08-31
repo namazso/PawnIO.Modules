@@ -62,10 +62,13 @@
 #define SMBNTFDADD	(20 + i801_smba)	/* ICH3 and later */
 
 /* PCI Address Constants */
+#define PCICMD		0x004
 #define SMB_BASE	0x020
 #define SMBHSTCFG	0x040
 #define TCOBASE		0x050
 #define TCOCTL		0x054
+
+#define PCICMD_IOBIT	BIT(1)
 
 /* Host configuration bits for SMBHSTCFG */
 #define SMBHSTCFG_HST_EN		BIT(0)
@@ -211,6 +214,8 @@ new pci_devices[] = [
 
 new pci_addr[3];
 new i801_smba;
+new write_protection_enabled;
+new pci_cmd_original;
 
 NTSTATUS:i801_init()
 {
@@ -251,12 +256,17 @@ NTSTATUS:i801_init()
     if (!(pci_config & SMBHSTCFG_HST_EN))
         return STATUS_NOT_SUPPORTED;
 
+    write_protection_enabled = (pci_config & SMBHSTCFG_SPD_WD) != 0;
+
     // Get SMBus IO base address, the last bit indicates IO mapping
     status = pci_config_read_dword(pci_addr[0], pci_addr[1], pci_addr[2], SMB_BASE, pci_config);
     if (!NT_SUCCESS(status) && !(pci_config & 0x1))
         return STATUS_NOT_SUPPORTED;
 
+    pci_config_read_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
+
     i801_smba = pci_config & 0xffe0;
+
     return STATUS_SUCCESS;
 }
 
@@ -353,7 +363,7 @@ NTSTATUS:i801_wait_intr(&hststs, size)
         return STATUS_IO_TIMEOUT;
 
     hststs &= (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR);
-    
+
     return STATUS_SUCCESS;
 }
 
@@ -471,14 +481,12 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         }
     case I2C_SMBUS_PROC_CALL:
         {
-            i801_set_hstadd(addr, I2C_SMBUS_WRITE);
+            i801_set_hstadd(addr, read_write);
             io_out_byte(SMBHSTDAT0, in & 0xff);
             io_out_byte(SMBHSTDAT1, (in & 0xff00) >> 8);
             io_out_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;
-            // This doesn't follow the trend of the other commands matching their size
-            size = 6
         }
     default:
         {
@@ -490,7 +498,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
     new NTSTATUS:status = i801_transaction(xact, hststs, size);
     if (!NT_SUCCESS(status))
         return status;
-    
+
 
     if (!hststs && read_write != I2C_SMBUS_WRITE) {
         switch (command) {
@@ -541,7 +549,7 @@ NTSTATUS:i801_inuse(bool:inuse)
             microsleep(250);
             is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
         }
-        
+
         if (is_inuse) {
             debug_print(''SMBus device is in use by BIOS/ACPI\n'');
             return STATUS_IO_TIMEOUT;
@@ -623,7 +631,7 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
         i801_kill();
         goto unlock;
     }
-    
+
     status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
@@ -676,8 +684,21 @@ DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
     if (new_freq != -1) {
         return STATUS_NOT_SUPPORTED;
     }
-    
+
     out[0] = 100000;
+
+    return STATUS_SUCCESS;
+}
+
+/// Get the SMBus SPD write protection status from host config.
+///
+/// @param in [0] Unused
+/// @param in_size Unused
+/// @param out [0] = SPD write protection status (0 = disabled, 1 = enabled)
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+DEFINE_IOCTL_SIZED(ioctl_write_protection, 0, 1) {
+    out[0] = write_protection_enabled;
 
     return STATUS_SUCCESS;
 }
@@ -705,103 +726,137 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     new read_write = in[1];
     new command = in[2];
     new hstcmd = in[3];
-    
+
+    new pci_cmd_modified;
+
+    //PCI CMD IO not enabled
+    if (false == (pci_cmd_original & PCICMD_IOBIT))
+    {
+        //Enable PCI CMD IO
+        pci_cmd_modified = pci_cmd_original | PCICMD_IOBIT;
+        pci_config_write_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_modified);
+    }
+
+    new NTSTATUS:status;
+
     switch (hstcmd) {
     case I2C_SMBUS_QUICK:
         {
             new unused;
-            return i801_access_simple(address, read_write, command, hstcmd, 0, unused);
+            status = i801_access_simple(address, read_write, command, hstcmd, 0, unused);
         }
     case I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA:
         {
             new unused;
             if (read_write == I2C_SMBUS_WRITE) {
-                if (in_size < 5)
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (in_size < 5) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
                 new data = in[4];
 
-                return i801_access_simple(address, read_write, command, hstcmd, data, unused);
+                status = i801_access_simple(address, read_write, command, hstcmd, data, unused);
             } else {
                 // read_write == I2C_SMBUS_READ
-                if (out_size < 1)
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (out_size < 1) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
-                return i801_access_simple(address, read_write, command, hstcmd, unused, out[0]);
+                status = i801_access_simple(address, read_write, command, hstcmd, unused, out[0]);
             }
         }
     case I2C_SMBUS_BLOCK_DATA:
         {
             if (read_write == I2C_SMBUS_WRITE) {
                 // 4 parameters, 5 cells of data
-                if (in_size < (4 + 5))
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (in_size < (4 + 5)) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
                 new in_data[I2C_SMBUS_BLOCK_MAX + 1];
                 unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX + 1, 4 * 8, 0);
 
                 new unused[I2C_SMBUS_BLOCK_MAX + 1];
 
-                return i801_access_block(address, read_write, command, hstcmd, in_data, unused);
+                status = i801_access_block(address, read_write, command, hstcmd, in_data, unused);
             } else {
                 // read_write == I2C_SMBUS_READ
-                if (out_size < 5)
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (out_size < 5) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
                 new unused[I2C_SMBUS_BLOCK_MAX + 1];
                 new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 
-                new NTSTATUS:status = i801_access_block(address, read_write, command, hstcmd, unused, out_data);
+                status = i801_access_block(address, read_write, command, hstcmd, unused, out_data);
 
                 if (!NT_SUCCESS(status))
-                    return status;
+                    goto getout;
 
                 out[0] = out_data[0];
                 pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
-
-                return status;
             }
         }
     case I2C_SMBUS_PROC_CALL:
         {
-            if (in_size < 5)
-                return STATUS_BUFFER_TOO_SMALL;
-            if (out_size < 1)
-                return STATUS_BUFFER_TOO_SMALL;
+            if (in_size < 5) {
+                status = STATUS_BUFFER_TOO_SMALL;
+                goto getout;
+            }
 
-            new unused;
+            if (out_size < 1) {
+                status = STATUS_BUFFER_TOO_SMALL;
+                goto getout;
+            }
+
             new data = in[4];
 
-            return i801_access_simple(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_PROC_CALL, data, unused);
+            status = i801_access_simple(address, read_write, command, hstcmd, data, out[0]);
         }
     case I2C_SMBUS_BLOCK_PROC_CALL:
         {
             // 4 parameters, 5 cells of data
-            if (in_size < (4 + 5))
-                return STATUS_BUFFER_TOO_SMALL;
-            if (out_size < 5)
-                return STATUS_BUFFER_TOO_SMALL;
+            if (in_size < (4 + 5)) {
+                status = STATUS_BUFFER_TOO_SMALL;
+                goto getout;
+            }
+
+            if (out_size < 5) {
+                status = STATUS_BUFFER_TOO_SMALL;
+                goto getout;
+            }
 
             new in_data[I2C_SMBUS_BLOCK_MAX + 1];
             unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX + 1, 4 * 8, 0);
 
             new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 
-            new NTSTATUS:status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out_data);
+            status = i801_access_block(address, I2C_SMBUS_WRITE, command, I2C_SMBUS_BLOCK_PROC_CALL, in_data, out_data);
 
             if (!NT_SUCCESS(status))
-                return status;
+                goto getout;
 
             out[0] = out_data[0];
             pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
-
-            return status;
         }
 
-    default:
-        debug_print(''Unsupported transaction %d\n'', hstcmd);
+        default:
+        {
+            debug_print(''Unsupported transaction %d\n'', hstcmd);
+            status = STATUS_NOT_SUPPORTED;
+        }
     }
-    return STATUS_NOT_SUPPORTED;
+
+getout:
+    //Restore original PCI CMD, if it was modified
+    if (pci_cmd_original != pci_cmd_modified)
+        pci_config_write_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
+
+    return status;
 }
 
 NTSTATUS:main() {

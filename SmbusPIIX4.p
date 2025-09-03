@@ -84,11 +84,16 @@
 #define SMBSLVDAT	(0x0C + piix4_smba)
 #define SMBTIMING	(0x0E + piix4_smba)
 
+/* PCI Address Constants */
+#define PCICMD		0x004
+
+#define PCICMD_IOBIT	0x01
+
 // A 32 byte block read at 10MHz is 32.5ms, 64ms should be plenty
 #define MAX_TIMEOUT 64
 
-#define PIIX4_PCI_BUS      0x00  
-#define PIIX4_PCI_DEVICE   0x14  
+#define PIIX4_PCI_BUS      0x00
+#define PIIX4_PCI_DEVICE   0x14
 #define PIIX4_PCI_FUNCTION 0x00
 
 new addresses[] = [0x0B00, 0x0B20];
@@ -178,7 +183,7 @@ unmap:
 NTSTATUS:piix4_busy_check()
 {
     new temp;
-    
+
     /* Make sure the SMBus host is ready to start transmitting */
     if ((temp = io_in_byte(SMBHSTSTS)) != 0x00) {
         debug_print(''SMBus busy (%x). Resetting...\n'', temp);
@@ -269,13 +274,13 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, hstcmd, in, &out)
     switch (hstcmd) {
     case I2C_SMBUS_QUICK:
         {
-            io_out_byte(SMBHSTADD, 
+            io_out_byte(SMBHSTADD,
                         (addr << 1) | read_write);
             protocol = PIIX4_QUICK;
         }
     case I2C_SMBUS_BYTE:
         {
-            io_out_byte(SMBHSTADD, 
+            io_out_byte(SMBHSTADD,
                         (addr << 1) | read_write);
             if (read_write == I2C_SMBUS_WRITE)
                 io_out_byte(SMBHSTCMD, command);
@@ -409,7 +414,7 @@ NTSTATUS:piix4_port_sel_primary(port, &old_port)
         debug_print(''Failed to map MMIO space\n'');
         return STATUS_IO_DEVICE_ERROR;
     }
-    
+
     // Read the current port
     new smba_en_lo;
     status = virtual_read_byte(addr + SB800_PIIX4_PORT_IDX_KERNCZ, smba_en_lo);
@@ -490,7 +495,7 @@ DEFINE_IOCTL_SIZED(ioctl_piix4_port_sel, 1, 1) {
     new old_port = -1;
 
     new NTSTATUS:status = piix4_port_sel(new_port, old_port);
-    
+
     out[0] = old_port;
 
     return status;
@@ -545,7 +550,7 @@ DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
         return STATUS_BUFFER_TOO_SMALL;
     if (in_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
-        
+
     new new_freq = in[0];
     new new_timing = -1;
 
@@ -568,7 +573,6 @@ DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
         // Set the new timing value
         io_out_byte(SMBTIMING, new_timing);
     }
-
 
     return STATUS_SUCCESS;
 }
@@ -594,53 +598,76 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     new read_write = in[1];
     new command = in[2];
     new hstcmd = in[3];
-    
+
+    new pci_cmd_original;
+    new pci_cmd_modified;
+
+    pci_config_read_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original);
+
+    //PCI CMD IO not enabled
+    if (0 == (pci_cmd_original & PCICMD_IOBIT))
+    {
+        //Enable PCI CMD IO
+        pci_cmd_modified = pci_cmd_original | PCICMD_IOBIT;
+        pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_modified);
+    }
+
+    new NTSTATUS:status;
+
     switch (hstcmd) {
     case I2C_SMBUS_QUICK:
         {
             new unused;
-            return piix4_access_simple(address, read_write, command, hstcmd, 0, unused);
+            status = piix4_access_simple(address, read_write, command, hstcmd, 0, unused);
         }
     case I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA:
         {
             new unused;
             if (read_write == I2C_SMBUS_WRITE) {
-                if (in_size < 5)
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (in_size < 5) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
                 new data = in[4];
 
-                return piix4_access_simple(address, read_write, command, hstcmd, data, unused);
+                status = piix4_access_simple(address, read_write, command, hstcmd, data, unused);
             } else {
                 // read_write == I2C_SMBUS_READ
-                if (out_size < 1)
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (out_size < 1) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
-                return piix4_access_simple(address, read_write, command, hstcmd, unused, out[0]);
+                status = piix4_access_simple(address, read_write, command, hstcmd, unused, out[0]);
             }
         }
     case I2C_SMBUS_BLOCK_DATA:
         {
             if (read_write == I2C_SMBUS_WRITE) {
                 // 4 parameters, 5 cells of data
-                if (in_size < (4 + 5))
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (in_size < (4 + 5)) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
                 new in_data[I2C_SMBUS_BLOCK_MAX + 1];
-
                 unpack_bytes_le(in, in_data, I2C_SMBUS_BLOCK_MAX + 1, 4 * 8, 0);
+
                 new unused[I2C_SMBUS_BLOCK_MAX + 1];
 
-                return piix4_access_block(address, read_write, command, hstcmd, in_data, unused);
+                status = piix4_access_block(address, read_write, command, hstcmd, in_data, unused);
             } else {
                 // read_write == I2C_SMBUS_READ
-                if (out_size < 5)
-                    return STATUS_BUFFER_TOO_SMALL;
+                if (out_size < 5) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    goto getout;
+                }
 
                 new unused[I2C_SMBUS_BLOCK_MAX + 1];
                 new out_data[I2C_SMBUS_BLOCK_MAX + 1];
 
-                new NTSTATUS:status = piix4_access_block(address, read_write, command, hstcmd, unused, out_data);
+                status = piix4_access_block(address, read_write, command, hstcmd, unused, out_data);
 
                 if (!NT_SUCCESS(status))
                     return status;
@@ -651,10 +678,19 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
                 return status;
             }
         }
-    default:
-        debug_print(''Unsupported transaction %d\n'', hstcmd);
+        default:
+        {
+            debug_print(''Unsupported transaction %d\n'', hstcmd);
+            status = STATUS_NOT_SUPPORTED;
+        }
     }
-    return STATUS_NOT_SUPPORTED;
+
+getout:
+    //Restore original PCI CMD, if it was modified
+    if (pci_cmd_original != pci_cmd_modified)
+        pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original);
+
+    return status;
 }
 
 NTSTATUS:main() {

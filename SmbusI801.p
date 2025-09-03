@@ -68,7 +68,7 @@
 #define TCOBASE		0x050
 #define TCOCTL		0x054
 
-#define PCICMD_IOBIT	BIT(1)
+#define PCICMD_IOBIT	0x01
 
 /* Host configuration bits for SMBHSTCFG */
 #define SMBHSTCFG_HST_EN		BIT(0)
@@ -215,7 +215,6 @@ new pci_devices[] = [
 new pci_addr[3];
 new i801_smba;
 new write_protection_enabled;
-new pci_cmd_original;
 
 NTSTATUS:i801_init()
 {
@@ -262,8 +261,6 @@ NTSTATUS:i801_init()
     status = pci_config_read_dword(pci_addr[0], pci_addr[1], pci_addr[2], SMB_BASE, pci_config);
     if (!NT_SUCCESS(status) && !(pci_config & 0x1))
         return STATUS_NOT_SUPPORTED;
-
-    pci_config_read_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
 
     i801_smba = pci_config & 0xffe0;
 
@@ -727,10 +724,13 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     new command = in[2];
     new hstcmd = in[3];
 
+    new pci_cmd_original;
     new pci_cmd_modified;
 
+    pci_config_read_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
+
     //PCI CMD IO not enabled
-    if (false == (pci_cmd_original & PCICMD_IOBIT))
+    if (0 == (pci_cmd_original & PCICMD_IOBIT))
     {
         //Enable PCI CMD IO
         pci_cmd_modified = pci_cmd_original | PCICMD_IOBIT;
@@ -843,7 +843,6 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
             out[0] = out_data[0];
             pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
         }
-
         default:
         {
             debug_print(''Unsupported transaction %d\n'', hstcmd);

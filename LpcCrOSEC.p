@@ -95,7 +95,7 @@ NTSTATUS:wait_for_ec(const status_addr, const timeout_usec) {
 		if (!(io_in_byte(status_addr) & EC_LPC_STATUS_BUSY_MASK))
 			return STATUS_SUCCESS;
 
-		microsleep(_min(delay, timeout_usec - i));
+		microsleep2(_min(delay, timeout_usec - i));
 
 		/* Increase the delay interval after a few rapid checks */
 		if (i > 20)
@@ -104,14 +104,14 @@ NTSTATUS:wait_for_ec(const status_addr, const timeout_usec) {
 	return STATUS_TIMEOUT; /* Timeout */
 }
 
-NTSTATUS:ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indata[], insize) {
+NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE], ec_out_size, ec_in_data[EC_LPC_HOST_PACKET_SIZE], ec_in_size, &result) {
     new csum = 0;
     const rq_size = 1 + 1 + 2 + 1 + 1 + 2;
     const rs_size = 1 + 1 + 2 + 2 + 2;
 
     /* Fail if we're going to overrun the EC */
-    if (outsize + rq_size > EC_LPC_HOST_PACKET_SIZE ||
-        insize + rs_size > EC_LPC_HOST_PACKET_SIZE)
+    if (ec_out_size + rq_size > EC_LPC_HOST_PACKET_SIZE ||
+        ec_in_size + rs_size > EC_LPC_HOST_PACKET_SIZE)
         return STATUS_BUFFER_TOO_SMALL;
 
     // struct_version, checksum, command (16bit), command_version, reserved, data_len (16bit)
@@ -122,13 +122,13 @@ NTSTATUS:ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indat
     request[3] = command >> 8;
     request[4] = version;
     request[5] = 0;
-    request[6] = outsize & 0xff;
-    request[7] = outsize >> 8;
+    request[6] = ec_out_size & 0xff;
+    request[7] = ec_out_size >> 8;
 
     /* Copy data and start checksum */
-    for (new i = 0; i < outsize; i++) {
-        io_out_byte(EC_LPC_ADDR_HOST_PACKET + rq_size + i, outdata[i + outoffset]);
-        csum += outdata[i + outoffset] & 0xff;
+    for (new i = 0; i < ec_out_size; i++) {
+        io_out_byte(EC_LPC_ADDR_HOST_PACKET + rq_size + i, ec_out_data[i]);
+        csum += ec_out_data[i] & 0xff;
     }
 
     /* Finish checksum */
@@ -153,7 +153,7 @@ NTSTATUS:ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indat
     /* Check result */
     new res = io_in_byte(EC_LPC_ADDR_HOST_DATA);
     /* First cell is negative for error */
-    indata[0] = -res;
+    result = -res;
     if (res) {
         debug_print(''EC returned error result code %d\n'', res);
         /*  I would like to return STATUS_IO_DEVICE_ERROR here,
@@ -182,16 +182,16 @@ NTSTATUS:ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indat
 
     new data_len = data_out[4] | data_out[5] << 8;
     /* First cell is positive for EC length */
-    indata[0] = data_len;
-    if (data_len > insize) {
+    result = data_len;
+    if (data_len > ec_in_size) {
         debug_print(''EC returned too much data\n'');
         return STATUS_BUFFER_TOO_SMALL;
     }
 
     /* Read back data and update checksum */
     for (new i = 0; i < data_len; i++) {
-        indata[i + 1] = io_in_byte(EC_LPC_ADDR_HOST_PACKET + rs_size + i);
-        csum += indata[i + 1];
+        ec_in_data[i] = io_in_byte(EC_LPC_ADDR_HOST_PACKET + rs_size + i);
+        csum += ec_in_data[i];
     }
 
     /* Verify checksum */
@@ -203,20 +203,12 @@ NTSTATUS:ec_command_lpc_3(command, version, outdata[], outsize, outoffset, indat
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:ec_readmem_lpc(offset, bytes, dest[]) {
+NTSTATUS:ec_readmem_lpc(offset, bytes, dest[EC_MEMMAP_SIZE]) {
     if ((offset + bytes) >= EC_MEMMAP_SIZE)
         return STATUS_INVALID_PARAMETER;
 
-    if (bytes <= EC_MEMMAP_SIZE) { /* fixed length */
-        for (new i = 0; i < bytes; i++)
-            dest[i] = io_in_byte(memmap_addr + offset + i);
-    } else { /* string */
-        for (new i = 0; i < EC_MEMMAP_SIZE; i++) {
-            dest[i] = io_in_byte(memmap_addr + offset + i);
-            if (!dest[i])
-                break;
-        }
-    }
+    for (new i = 0; i < bytes; i++)
+        dest[i] = io_in_byte(memmap_addr + offset + i);
 
     return STATUS_SUCCESS;
 }
@@ -271,33 +263,87 @@ NTSTATUS:comm_init_lpc() {
     return STATUS_SUCCESS;
 }
 
+/// Execute a command on the EC.
+///
+/// @param in [0] = version, [1] = command, [2] = outgoing length in bytes, [3] = incoming length in bytes, [4..38] = data
+/// @param in_size Must be 4 + ceil(outgoing length / 8)
+/// @param out [0] = number of received bytes or negative for error, [1..33] = data received
+/// @param out_size Must be 1 + ceil(incoming length / 8)
+/// @return An NTSTATUS
 DEFINE_IOCTL(ioctl_ec_command) {
-    if (in_size < 3 || out_size < 1)
+    if (in_size < 4)
+        return STATUS_BUFFER_TOO_SMALL;
+    if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
-    if (ec_command_proto == 3) {
-        new command = (in[0] & 0xff) | (in[1] << 8);
-        new version = in[2];
-        new in_size_offset = 3;
-        new ec_in_size = in_size - in_size_offset;
-        new out_size_offset = 1;
-        new ec_out_size = out_size - out_size_offset;
+    new NTSTATUS:status;
+    new result;
+    new version = in[0];
+    new command = in[1];
+    /*
+     * ec_out_* and ec_in_* are outgoing and incoming to the EC.
+     * They are flipped from the in and out parameters to this function.
+     */
+    new ec_out_size = in[2] & 0xFF;
+    new ec_in_size = in[3] & 0xFF;
+    new ec_out_data[EC_LPC_HOST_PACKET_SIZE];
+    new ec_in_data[EC_LPC_HOST_PACKET_SIZE];
 
-        return ec_command_lpc_3(command, version, in, ec_in_size, in_size_offset, out, ec_out_size);
+    if (in_size < 4 + _div_ceil(ec_out_size, 8))
+        return STATUS_BUFFER_TOO_SMALL;
+    if (out_size < 1 + _div_ceil(ec_in_size, 8))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if (ec_out_size > EC_LPC_HOST_PACKET_SIZE - 1)
+        return STATUS_INVALID_PARAMETER;
+    if (ec_in_size > EC_LPC_HOST_PACKET_SIZE - 1)
+        return STATUS_INVALID_PARAMETER;
+
+    if (ec_command_proto == 3) {
+        unpack_bytes_le(in, ec_out_data, ec_out_size, 4 * 8, 0);
+
+        status = ec_command_lpc_3(command, version, ec_out_data, ec_out_size, ec_in_data, ec_in_size, result);
+        if (status != STATUS_SUCCESS)
+            return status;
+
+        out[0] = result;
+        if (result >= 0)
+            pack_bytes_le(ec_in_data, out, ec_in_size, 0, 8);
+        return STATUS_SUCCESS;
     }
 
     return STATUS_NOT_SUPPORTED;
 }
 
+/// Read memory from the EC memory map.
+/// @param in [0] = offset, [1] = bytes to read
+/// @param in_size Must be 2
+/// @param out [0..32] = data read from EC memory map
+/// @param out_size Must be at least 1 and equal ceil(bytes / 8)
+/// @return An NTSTATUS
 DEFINE_IOCTL(ioctl_ec_readmem) {
-    if (in_size < 1)
+    if (in_size < 2)
         return STATUS_BUFFER_TOO_SMALL;
     if (out_size < 1)
         return STATUS_BUFFER_TOO_SMALL;
 
+    new NTSTATUS:status;
     new offset = in[0] & 0xFFFF;
+    new bytes = in[1] & 0xFF;
+    new out_data[EC_MEMMAP_SIZE];
 
-    return ec_readmem_lpc(offset, out_size, out);
+    if (out_size < _div_ceil(bytes, 8))
+        return STATUS_BUFFER_TOO_SMALL;
+    if (bytes > out_size * 8)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    status = ec_readmem_lpc(offset, bytes, out_data);
+    if (status != STATUS_SUCCESS)
+        return status;
+
+    pack_bytes_le(out_data, out, bytes);
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS:main() {

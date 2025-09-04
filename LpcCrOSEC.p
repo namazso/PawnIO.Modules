@@ -104,7 +104,7 @@ NTSTATUS:wait_for_ec(const status_addr, const timeout_usec) {
 	return STATUS_TIMEOUT; /* Timeout */
 }
 
-NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[], ec_out_size, ec_in_data[], ec_in_size, &result) {
+NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE], ec_out_size, ec_in_data[EC_LPC_HOST_PACKET_SIZE], ec_in_size, &result) {
     new csum = 0;
     const rq_size = 1 + 1 + 2 + 1 + 1 + 2;
     const rs_size = 1 + 1 + 2 + 2 + 2;
@@ -203,7 +203,7 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[], ec_out_size, ec_in_da
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:ec_readmem_lpc(offset, bytes, dest[]) {
+NTSTATUS:ec_readmem_lpc(offset, bytes, dest[EC_MEMMAP_SIZE]) {
     if ((offset + bytes) >= EC_MEMMAP_SIZE)
         return STATUS_INVALID_PARAMETER;
 
@@ -284,14 +284,14 @@ DEFINE_IOCTL(ioctl_ec_command) {
      * ec_out_* and ec_in_* are outgoing and incoming to the EC.
      * They are flipped from the in and out parameters to this function.
      */
-    new ec_out_size = in[2];
-    new ec_in_size = in[3];
+    new ec_out_size = in[2] & 0xFF;
+    new ec_in_size = in[3] & 0xFF;
     new ec_out_data[EC_LPC_HOST_PACKET_SIZE];
     new ec_in_data[EC_LPC_HOST_PACKET_SIZE];
 
-    if (in_size < 4 + _ceil_div(ec_out_size, 8))
+    if (in_size < 4 + _div_ceil(ec_out_size, 8))
         return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1 + _ceil_div(ec_in_size, 8))
+    if (out_size < 1 + _div_ceil(ec_in_size, 8))
         return STATUS_BUFFER_TOO_SMALL;
 
     if (ec_out_size > EC_LPC_HOST_PACKET_SIZE - 1)
@@ -329,10 +329,10 @@ DEFINE_IOCTL(ioctl_ec_readmem) {
 
     new NTSTATUS:status;
     new offset = in[0] & 0xFFFF;
-    new bytes = in[1];
+    new bytes = in[1] & 0xFF;
     new out_data[EC_MEMMAP_SIZE];
 
-    if (out_size < _ceil_div(bytes, 8))
+    if (out_size < _div_ceil(bytes, 8))
         return STATUS_BUFFER_TOO_SMALL;
     if (bytes > out_size * 8)
         return STATUS_BUFFER_TOO_SMALL;

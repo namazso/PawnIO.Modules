@@ -53,12 +53,35 @@ stock _max(a, b) {
 
 /// Divide two numbers and round up.
 ///
-/// @param a Dividend
-/// @param b Divisor
-/// @return The result of the division, rounded up
-/// @note The divide operator, "/", rounds downwards
-stock _ceil_div(a, b) {
-    return (a + b - 1) / b;
+/// @param x Dividend
+/// @param y Divisor
+/// @return The result of the division, rounded up (round towards +infinity)
+/// @note The divide operator, "/", truncates (round towards zero)
+stock _div_ceil(x, y) {
+    new quotientPositive = (y >= 0) == (x >= 0);
+    return x / y + _:(x % y != 0 && quotientPositive);
+}
+
+/// Divide two numbers and round down.
+///
+/// @param x Dividend
+/// @param y Divisor
+/// @return The result of the division, rounded down (round towards -infinity)
+/// @note The divide operator, "/", truncates (round towards zero)
+stock _div_floor(x, y) {
+    new quotientNegative = (y < 0) != (x < 0);
+    return x / y - _:(x % y != 0 && quotientNegative);
+}
+
+/// Divide two numbers and round away from zero.
+///
+/// @param x Dividend
+/// @param y Divisor
+/// @return The result of the division, rounded away from zero
+/// @note The divide operator, "/", truncates (round towards zero)
+stock _div_away(x, y) {
+    new quotientSgn = ((x > 0) - (x < 0)) * ((y > 0) - (y < 0));
+    return x / y + _:(x % y != 0) * quotientSgn;
 }
 
 #define PAGE_SIZE (0x1000)

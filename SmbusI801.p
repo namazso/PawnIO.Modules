@@ -441,7 +441,7 @@ Void:i801_set_hstadd(addr, read_write)
 
 NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &hststs)
 {
-    new xact, size = hstcmd;
+    new xact, size = command;
 
     switch (command) {
     case I2C_SMBUS_QUICK:

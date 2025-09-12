@@ -225,6 +225,7 @@ NTSTATUS:comm_init_lpc() {
     byte &= io_in_byte(EC_LPC_ADDR_HOST_CMD);
     byte &= io_in_byte(EC_LPC_ADDR_HOST_DATA);
     if (byte == 0xff) {
+        debug_print(''EC status register is not valid.\n'');
         return STATUS_NOT_SUPPORTED;
     }
 
@@ -245,6 +246,7 @@ NTSTATUS:comm_init_lpc() {
         memmap_addr = EC_LPC_ADDR_MEMMAP_FWAMD;
     }
     if (!memmap_addr) {
+        debug_print(''Cannot find EC memmap.\n'');
         return STATUS_NOT_SUPPORTED;
     }
 
@@ -255,8 +257,7 @@ NTSTATUS:comm_init_lpc() {
         /* Protocol version 3 */
         ec_command_proto = 3;
     } else {
-        // TODO: Implement protocol version 2
-        // EC doesn't support protocols we need.
+        debug_print(''EC doesn't support protocols we need.\n'');
         return STATUS_NOT_SUPPORTED;
     }
 

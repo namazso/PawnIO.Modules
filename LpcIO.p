@@ -112,6 +112,14 @@ NTSTATUS:find_bars() {
     return STATUS_SUCCESS;
 }
 
+/// Select chip slot.
+///
+/// Slot 0 is at 0x2e/0x2f, slot 1 at 0x4e/0x4f.
+///
+/// @param in [0] = Slot (0 or 1)
+/// @param in_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_select_slot, 1, 0) {
     reset();
 
@@ -130,6 +138,13 @@ DEFINE_IOCTL_SIZED(ioctl_select_slot, 1, 0) {
     return STATUS_SUCCESS;
 }
 
+/// Find BARs to update allowed ports.
+///
+/// This should be called after configuration mode was entered and chip ID is valid. After calling this,
+/// you can use ioctl_pio_inb/ioctl_pio_outb to read/write from/to the found BARs.
+///
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_find_bars, 0, 0) {
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
@@ -154,6 +169,14 @@ bool:is_port_allowed(port) {
     return valid;
 }
 
+/// Read a byte from a port.
+///
+/// @param in [0] = Port
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_pio_inb, 1, 1) {
     new port = in[0] & 0xFFFF;
 
@@ -167,6 +190,12 @@ DEFINE_IOCTL_SIZED(ioctl_pio_inb, 1, 1) {
     return STATUS_SUCCESS;
 }
 
+/// Write a byte to a port.
+///
+/// @param in [0] = Port, [1] = Value
+/// @param in_size Must be 2
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_pio_outb, 2, 0) {
     new port = in[0] & 0xFFFF;
     new value = in[1];
@@ -181,6 +210,14 @@ DEFINE_IOCTL_SIZED(ioctl_pio_outb, 2, 0) {
     return STATUS_SUCCESS;
 }
 
+/// Read a byte from Super IO.
+///
+/// @param in [0] = Register
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_superio_inb, 1, 1) {
     new reg = in[0] & 0xFF;
 
@@ -191,6 +228,14 @@ DEFINE_IOCTL_SIZED(ioctl_superio_inb, 1, 1) {
     return STATUS_SUCCESS;
 }
 
+/// Read a word from Super IO.
+///
+/// @param in [0] = Register
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_superio_inw, 1, 1) {
     new reg = in[0] & 0xFF;
 
@@ -201,6 +246,12 @@ DEFINE_IOCTL_SIZED(ioctl_superio_inw, 1, 1) {
     return STATUS_SUCCESS;
 }
 
+/// Write a byte to Super IO.
+///
+/// @param in [0] = Register, [1] = Value
+/// @param in_size Must be 2
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_ISABUS.HTP.Method" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_superio_outb, 2, 0) {
     new reg = in[0] & 0xFF;
     new val = in[1] & 0xFF;

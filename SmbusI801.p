@@ -711,7 +711,7 @@ DEFINE_IOCTL_SIZED(ioctl_write_protection, 0, 1) {
 ///
 /// @param in [0] = Address, [1] = Read(1)/Write(0), [2] = Command, [3] = Protocol, [4..9] Data
 /// @param in_size Must be between 4 and 9
-/// @param out [0] = Length in bytes, [1..5] = Data (byte packed)
+/// @param out [0..5] = Length then Data (byte packed)
 /// @param out_size Must be between 0 and 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
@@ -840,8 +840,7 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
             if (!NT_SUCCESS(status))
                 goto getout;
 
-            out[0] = out_data[0];
-            pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
+            pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX + 1);
         }
         default:
         {

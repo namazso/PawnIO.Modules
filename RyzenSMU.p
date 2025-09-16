@@ -420,7 +420,7 @@ DEFINE_IOCTL(ioctl_read_pm_table) {
         return STATUS_BUFFER_TOO_SMALL;
     if (!g_table_base)
         return STATUS_DEVICE_NOT_READY;
-    new read_count = _min(out_size, PAGE_SIZE / 8);
+    new read_count = min(out_size, PAGE_SIZE / 8);
     new read_size = read_count * 8;
     new VA:va = io_space_map(g_table_base, read_size);
     new NTSTATUS:status = STATUS_SUCCESS;
@@ -476,21 +476,18 @@ NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
-    new vendor[4];
-    cpuid(0, 0, vendor);
-    if (!is_amd(vendor))
+    if (get_cpu_vendor() != CpuVendor_AMD)
         return STATUS_NOT_SUPPORTED;
 
-    new procinfo[4];
-    cpuid(1, 0, procinfo);
+    new fms = get_cpu_fms();
+
+    new family = cpu_fms_family(fms);
+    new model = cpu_fms_model(fms);
 
     new extended[4];
     cpuid(0x80000001, 0, extended);
 
-    new family = ((procinfo[0] & 0x0FF00000) >> 20) + ((procinfo[0] & 0x0F00) >> 8);
-    new model = ((procinfo[0] & 0x0F0000) >> 12) + ((procinfo[0] & 0xF0) >> 4);
-    //new stepping = procinfo[0] & 0x0F;
-    new pkg_type = (extended[1] >> 28) & 0xFF;
+    new pkg_type = (extended[1] >>> 28) & 0xFF;
 
     debug_print(''RyzenSMU: family: %x model: %x pkg_type: %x\n'', family, model, pkg_type);
 
@@ -506,7 +503,7 @@ NTSTATUS:main() {
     if (!NT_SUCCESS(status))
         return status;
 
-    debug_print(''RyzenSMU: code_name: %x vid: %x did: %x\n'', _:code_name, didvid & 0xFFFF, (didvid >> 16) & 0xFFFF);
+    debug_print(''RyzenSMU: code_name: %x vid: %x did: %x\n'', _:code_name, didvid & 0xFFFF, (didvid >>> 16) & 0xFFFF);
 
     // sanity check that it's something AMD
     if (didvid & 0xFFFF != 0x1022)

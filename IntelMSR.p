@@ -89,9 +89,7 @@ NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
-    new vendor[4];
-    cpuid(0, 0, vendor);
-    if (!is_intel(vendor))
+    if (get_cpu_vendor() != CpuVendor_Intel)
         return STATUS_NOT_SUPPORTED;
 
     return STATUS_SUCCESS;

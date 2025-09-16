@@ -90,7 +90,7 @@ DEFINE_IOCTL_SIZED(ioctl_get_thermtrip, 2, 1) {
     if ((didvid & 0xFFFF) != AMD_VID)
         return STATUS_NOT_SUPPORTED;
     
-    if ((didvid >> 16) != MISCELLANEOUS_CONTROL_DID)
+    if ((didvid >>> 16) != MISCELLANEOUS_CONTROL_DID)
         return STATUS_NOT_SUPPORTED;
     
     new sel_cpu = g_model < 40 ? (core_idx ? 4 : 0) : (core_idx ? 0 : 4);
@@ -111,23 +111,15 @@ NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
-    new vendor[4];
-    cpuid(0, 0, vendor);
-    if (!is_amd(vendor))
+    if (get_cpu_vendor() != CpuVendor_AMD)
         return STATUS_NOT_SUPPORTED;
 
-    new procinfo[4];
-    cpuid(1, 0, procinfo);
+    new fms = get_cpu_fms();
 
-    new extended[4];
-    cpuid(0x80000001, 0, extended);
+    new family = cpu_fms_family(fms);
+    new model = cpu_fms_model(fms);
 
-    new family = ((procinfo[0] & 0x0FF00000) >> 20) + ((procinfo[0] & 0x0F00) >> 8);
-    new model = ((procinfo[0] & 0x0F0000) >> 12) + ((procinfo[0] & 0xF0) >> 4);
-    //new stepping = procinfo[0] & 0x0F;
-    new pkg_type = (extended[1] >> 28) & 0xFF;
-
-    debug_print(''AMDFamily0F: family: %x model: %x pkg_type: %x\n'', family, model, pkg_type);
+    debug_print(''AMDFamily0F: family: %x model: %x\n'', family, model);
 
     if (family != 0x0F)
         return STATUS_NOT_SUPPORTED;

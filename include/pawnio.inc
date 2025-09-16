@@ -18,50 +18,29 @@
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "core.inc"
+#include "util.inc"
 #include "ntstatus.inc"
 #include "native.inc"
+#include "extra.inc"
 
-/// Test if a vendor string is AMD
-///
-/// @param vendor Vendor string from CPUID
-/// @return Whether the vendor is AMD
-stock bool:is_amd(vendor[4]) {
-    return vendor[1] == CHAR4_CONST('A', 'u', 't', 'h') && vendor[3] == CHAR4_CONST('e', 'n', 't', 'i') && vendor[2] == CHAR4_CONST('c', 'A', 'M', 'D');
-}
+/// Define an IOCTL function.
+/// @param %1 Name of the IOCTL function, must start with ioctl_
+#define DEFINE_IOCTL(%1) \
+    forward NTSTATUS:%1(in[], in_size, out[], out_size); \
+    public NTSTATUS:%1(in[], in_size, out[], out_size)
 
-/// Test if a vendor string is Intel
-///
-/// @param vendor Vendor string from CPUID
-/// @return Whether the vendor is Intel
-stock bool:is_intel(vendor[4]) {
-    return vendor[1] == CHAR4_CONST('G', 'e', 'n', 'u') && vendor[3] == CHAR4_CONST('i', 'n', 'e', 'I') && vendor[2] == CHAR4_CONST('n', 't', 'e', 'l');
-}
+/// Define an IOCTL function with static buffer sizes.
+/// @param %1 Name of the IOCTL function, must start with ioctl_
+/// @param %2 Size of the input buffer
+/// @param %3 Size of the output buffer
+#define DEFINE_IOCTL_SIZED(%1,%2,%3) \
+    forward NTSTATUS:%1(in[%2], in_size, out[%3], out_size); \
+    public NTSTATUS:%1(in[%2], in_size, out[%3], out_size) \
+        if (((%2) != 0 && in_size != (%2)) || ((%3) != 0 && out_size != (%3))) \
+            return STATUS_INVALID_PARAMETER; \
+        else
 
-/// Busy sleep, not recommended above 50us.
-///
-/// @param us Microseconds to sleep
-stock Void:microsleep2(us) {
-    static VAProc:KeStallExecutionProcessor = VAProc:0;
-    if (KeStallExecutionProcessor == VAProc:0) {
-        KeStallExecutionProcessor = get_proc_address(''KeStallExecutionProcessor'');
-    }
-    // Allow precaching the ptr with us == 0
-    if (us > 0) {
-        new ret;
-        invoke(KeStallExecutionProcessor, ret, us);
-    }
-}
+NTSTATUS:main();
 
-#define KUSER_SHARED_DATA VA:0xFFFFF78000000000
-
-/// Get tick count.
-///
-/// @return Tick count
-stock get_tick_count() {
-    new value;
-    new multiplier;
-    // KUSER_SHARED_DATA->TickCountQuad
-    virtual_read_qword(KUSER_SHARED_DATA + 0x0320, value);
-    virtual_read_dword(KUSER_SHARED_DATA + 0x0004, multiplier);
-    return (value * multiplier) >> 24;
-}
+/// Executed on module unload.
+forward NTSTATUS:unload();

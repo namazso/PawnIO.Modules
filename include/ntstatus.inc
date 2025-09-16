@@ -17,7 +17,7 @@
 //
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
-#include "core.inc"
+// NTSTATUS codes.
 
 #define STATUS_SUCCESS NTSTATUS:(SIGN_EXTEND32(0x00000000))
 #define STATUS_WAIT_0 NTSTATUS:(SIGN_EXTEND32(0x00000000))

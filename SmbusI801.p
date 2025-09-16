@@ -470,7 +470,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
             i801_set_hstadd(addr, read_write);
             if (read_write == I2C_SMBUS_WRITE) {
                 io_out_byte(SMBHSTDAT0, in & 0xff);
-                io_out_byte(SMBHSTDAT1, (in & 0xff00) >> 8);
+                io_out_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
             }
             io_out_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
@@ -480,7 +480,7 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         {
             i801_set_hstadd(addr, read_write);
             io_out_byte(SMBHSTDAT0, in & 0xff);
-            io_out_byte(SMBHSTDAT1, (in & 0xff00) >> 8);
+            io_out_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
             io_out_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;

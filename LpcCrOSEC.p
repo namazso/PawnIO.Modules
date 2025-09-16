@@ -95,11 +95,11 @@ NTSTATUS:wait_for_ec(const status_addr, const timeout_usec) {
 		if (!(io_in_byte(status_addr) & EC_LPC_STATUS_BUSY_MASK))
 			return STATUS_SUCCESS;
 
-		microsleep2(_min(delay, timeout_usec - i));
+		microsleep2(min(delay, timeout_usec - i));
 
 		/* Increase the delay interval after a few rapid checks */
 		if (i > 20)
-			delay = _min(delay * 2, MAXIMUM_UDELAY);
+			delay = min(delay * 2, MAXIMUM_UDELAY);
 	}
 	return STATUS_TIMEOUT; /* Timeout */
 }
@@ -119,11 +119,11 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
     request[0] = EC_HOST_REQUEST_VERSION;
     request[1] = csum;
     request[2] = command & 0xff;
-    request[3] = command >> 8;
+    request[3] = command >>> 8;
     request[4] = version;
     request[5] = 0;
     request[6] = ec_out_size & 0xff;
-    request[7] = ec_out_size >> 8;
+    request[7] = ec_out_size >>> 8;
 
     /* Copy data and start checksum */
     for (new i = 0; i < ec_out_size; i++) {
@@ -290,9 +290,9 @@ DEFINE_IOCTL(ioctl_ec_command) {
     new ec_out_data[EC_LPC_HOST_PACKET_SIZE];
     new ec_in_data[EC_LPC_HOST_PACKET_SIZE];
 
-    if (in_size < 4 + _div_ceil(ec_out_size, 8))
+    if (in_size < 4 + div_ceil(ec_out_size, 8))
         return STATUS_BUFFER_TOO_SMALL;
-    if (out_size < 1 + _div_ceil(ec_in_size, 8))
+    if (out_size < 1 + div_ceil(ec_in_size, 8))
         return STATUS_BUFFER_TOO_SMALL;
 
     if (ec_out_size > EC_LPC_HOST_PACKET_SIZE - 1)
@@ -333,7 +333,7 @@ DEFINE_IOCTL(ioctl_ec_readmem) {
     new bytes = in[1] & 0xFF;
     new out_data[EC_MEMMAP_SIZE];
 
-    if (out_size < _div_ceil(bytes, 8))
+    if (out_size < div_ceil(bytes, 8))
         return STATUS_BUFFER_TOO_SMALL;
     if (bytes > out_size * 8)
         return STATUS_BUFFER_TOO_SMALL;

@@ -102,16 +102,13 @@ NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
-    new vendor[4];
-    cpuid(0, 0, vendor);
-    if (!is_amd(vendor))
+    if (get_cpu_vendor() != CpuVendor_AMD)
         return STATUS_NOT_SUPPORTED;
 
-    new procinfo[4];
-    cpuid(1, 0, procinfo);
+    new fms = get_cpu_fms();
 
-    new family = ((procinfo[0] & 0x0FF00000) >> 20) + ((procinfo[0] & 0x0F00) >> 8);
-    new model = ((procinfo[0] & 0x0F0000) >> 12) + ((procinfo[0] & 0xF0) >> 4);
+    new family = cpu_fms_family(fms);
+    new model = cpu_fms_model(fms);
 
     debug_print(''AMDReset: family: %x model: %x\n'', family, model);
 

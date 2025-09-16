@@ -20,7 +20,7 @@ jobs:
         run: dnf install -yq _pawn/pawn-*.x86_64.rpm
       
       - name: Compile modules
-        run: for f in ./*.p; do [ -f "$f" ] && pawncc "$f" '-iinclude' '-C64' '-;+' '-(+'; done
+        run: for f in ./*.p; do [ -f "$f" ] && pawncc "$f" '-iinclude' '-C64' '-;+' '-(+' '-p'; done
         
       - name: Upload modules
         uses: actions/upload-artifact@v4

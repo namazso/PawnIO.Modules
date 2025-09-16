@@ -303,7 +303,7 @@ NTSTATUS:piix4_access_simple(addr, read_write, command, hstcmd, in, &out)
             io_out_byte(SMBHSTCMD, command);
             if (read_write == I2C_SMBUS_WRITE) {
                 io_out_byte(SMBHSTDAT0, in);
-                io_out_byte(SMBHSTDAT1, in >> 8);
+                io_out_byte(SMBHSTDAT1, in >>> 8);
             }
             protocol = PIIX4_WORD_DATA;
             size += read_write;
@@ -424,7 +424,7 @@ NTSTATUS:piix4_port_sel_primary(port, &old_port)
         goto unmap;
     }
 
-    new reg = (smba_en_lo & SB800_PIIX4_PORT_IDX_MASK_KERNCZ) >> SB800_PIIX4_PORT_IDX_SHIFT_KERNCZ;
+    new reg = (smba_en_lo & SB800_PIIX4_PORT_IDX_MASK_KERNCZ) >>> SB800_PIIX4_PORT_IDX_SHIFT_KERNCZ;
     old_port = reg_to_port[reg];
     // Return the current port if the given port is -1
     if (port == -1)

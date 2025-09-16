@@ -17,6 +17,8 @@
 //
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
+// PawnIO native functions for low-level operations.
+
 /// Send a message to the kernel debugger.
 ///
 /// @param fmt Format string, only integers are supported

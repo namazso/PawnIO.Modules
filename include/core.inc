@@ -17,151 +17,36 @@
 //
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
-#define cellbytes (cellbits / 8)
+// Implementation of some of Pawn's core functions. Normally these would be
+// natives, but they're easily implemented in Pawn itself.
 
-#define SIGN_EXTEND(%1,%2) (((%1) << (cellbits - (%2))) >> (cellbits - (%2)))
-#define SIGN_EXTEND8(%1) (SIGN_EXTEND(%1, 8))
-#define SIGN_EXTEND16(%1) (SIGN_EXTEND(%1, 16))
-#define SIGN_EXTEND32(%1) (SIGN_EXTEND(%1, 32))
+stock tolower(c) {
+    return (c >= 'A' && c <= 'Z') ? (c + ('a' - 'A')) : c;
+}
 
-#define CHAR1_CONST(%1) (%1)
-#define CHAR2_CONST(%1,%2) (CHAR1_CONST(%1) | ((%2) << 8))
-#define CHAR3_CONST(%1,%2,%3) (CHAR2_CONST(%1, %2) | ((%3) << 16))
-#define CHAR4_CONST(%1,%2,%3,%4) (CHAR3_CONST(%1, %2, %3) | ((%4) << 24))
-#define CHAR5_CONST(%1,%2,%3,%4,%5) (CHAR4_CONST(%1, %2, %3, %4) | ((%5) << 32))
-#define CHAR6_CONST(%1,%2,%3,%4,%5,%6) (CHAR5_CONST(%1, %2, %3, %4, %5) | ((%6) << 40))
-#define CHAR7_CONST(%1,%2,%3,%4,%5,%6,%7) (CHAR6_CONST(%1, %2, %3, %4, %5, %6) | ((%7) << 48))
-#define CHAR8_CONST(%1,%2,%3,%4,%5,%6,%7,%8) (CHAR7_CONST(%1, %2, %3, %4, %5, %6, %7) | ((%8) << 56))
+stock toupper(c) {
+    return (c >= 'a' && c <= 'z') ? (c - ('a' - 'A')) : c;
+}
 
-/// Minimum of two numbers.
-///
-/// @param a First number
-/// @param b Second number
-/// @return The smaller of the two arguments
-stock _min(a, b) {
+stock swapchars(c) {
+    const cellbytes = cellbits / 8;
+    for (new i = 0; i < cellbytes / 2; i++) {
+        new low = (c >>> (i * 8)) & 0xff;
+        new high = (c >>> ((cellbytes - 1 - i) * 8)) & 0xff;
+        c &= ~((0xff << (i * 8)) | (0xff << ((cellbytes - 1 - i) * 8)));
+        c |= (low << ((cellbytes - 1 - i) * 8)) | (high << (i * 8));
+    }
+    return c;
+}
+
+stock min(a, b) {
     return a < b ? a : b;
 }
 
-/// Maximum of two numbers.
-///
-/// @param a First number
-/// @param b Second number
-/// @return The greater of the two arguments
-stock _max(a, b) {
+stock max(a, b) {
     return a > b ? a : b;
 }
 
-/// Divide two numbers and round up.
-///
-/// @param x Dividend
-/// @param y Divisor
-/// @return The result of the division, rounded up (round towards +infinity)
-/// @note The divide operator, "/", truncates (round towards zero)
-stock _div_ceil(x, y) {
-    new quotientPositive = (y >= 0) == (x >= 0);
-    return x / y + _:(x % y != 0 && quotientPositive);
+stock clamp(value, min=cellmin, max=cellmax) {
+    return value < min ? min : (value > max ? max : value);
 }
-
-/// Divide two numbers and round down.
-///
-/// @param x Dividend
-/// @param y Divisor
-/// @return The result of the division, rounded down (round towards -infinity)
-/// @note The divide operator, "/", truncates (round towards zero)
-stock _div_floor(x, y) {
-    new quotientNegative = (y < 0) != (x < 0);
-    return x / y - _:(x % y != 0 && quotientNegative);
-}
-
-/// Divide two numbers and round away from zero.
-///
-/// @param x Dividend
-/// @param y Divisor
-/// @return The result of the division, rounded away from zero
-/// @note The divide operator, "/", truncates (round towards zero)
-stock _div_away(x, y) {
-    new quotientSgn = ((x > 0) - (x < 0)) * ((y > 0) - (y < 0));
-    return x / y + _:(x % y != 0) * quotientSgn;
-}
-
-#define PAGE_SIZE (0x1000)
-
-#define BIT(%1) (1 << (%1))
-
-/// Unpack bytes packed into cells.
-///
-/// @param src Source array
-/// @param dst Destination array
-/// @param size Count of bytes to unpack
-/// @param src_offs Source offset, in bytes
-/// @param dst_offs Destination offset, in cells
-stock Void:unpack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
-    for (new i = 0; i < size; i++) {
-        new src_idx = src_offs + i;
-        new src_cell = src[src_idx / cellbytes];
-        new byte = (src_cell >> ((src_idx % cellbytes) * 8)) & 0xff;
-        dst[dst_offs + i] = byte;
-    }
-}
-
-/// Pack bytes into cells
-///
-/// @param src Source array
-/// @param dst Destination array
-/// @param size Count of bytes to pack
-/// @param src_offs Source offset, in cells
-/// @param dst_offs Destination offset, in bytes
-stock Void:pack_bytes_le(src[], dst[], size, src_offs = 0, dst_offs = 0) {
-    for (new i = 0; i < size; i++) {
-        new byte = src[src_offs + i] & 0xff;
-        new dst_idx = dst_offs + i;
-        dst[dst_idx / cellbytes] &= ~(0xff << ((dst_idx % cellbytes) * 8));
-        dst[dst_idx / cellbytes] |= byte << ((dst_idx % cellbytes) * 8);
-    }
-}
-
-/// Get individual bytes from a cell.
-///
-/// @param src Source cell
-/// @param idx Byte index in cell
-stock get_byte_le(src, idx) {
-    return((src >> ((idx % cellbytes) * 8)) & 0xff);
-}
-
-#define GET_BYTE_LE(%1,%2) (get_byte_le((%1[(%2) / cellbytes]), ((%2) % cellbytes)))
-
-
-/// Set an individual byte in a cell.
-///
-/// @param dst Destination cell
-/// @param idx Byte index in cell
-/// @param val Byte value to set
-stock set_byte_le(&dst, idx, val) {
-    new shift = ((idx % cellbytes) * 8);
-    dst &= ~(0xff << shift);
-    dst |= ((val & 0xff) << shift);
-}
-
-#define SET_BYTE_LE(%1,%2,%3) (set_byte_le((%1[(%2) / cellbytes]), ((%2) % cellbytes), (%3)))
-
-/// Define an IOCTL function.
-/// @param %1 Name of the IOCTL function, must start with ioctl_
-#define DEFINE_IOCTL(%1) \
-    forward NTSTATUS:%1(in[], in_size, out[], out_size); \
-    public NTSTATUS:%1(in[], in_size, out[], out_size)
-
-/// Define an IOCTL function with static buffer sizes.
-/// @param %1 Name of the IOCTL function, must start with ioctl_
-/// @param %2 Size of the input buffer
-/// @param %3 Size of the output buffer
-#define DEFINE_IOCTL_SIZED(%1,%2,%3) \
-    forward NTSTATUS:%1(in[%2], in_size, out[%3], out_size); \
-    public NTSTATUS:%1(in[%2], in_size, out[%3], out_size) \
-        if (((%2) != 0 && in_size != (%2)) || ((%3) != 0 && out_size != (%3))) \
-            return STATUS_INVALID_PARAMETER; \
-        else
-
-NTSTATUS:main();
-
-/// Executed on module unload.
-forward NTSTATUS:unload();

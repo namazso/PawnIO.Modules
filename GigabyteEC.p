@@ -79,37 +79,65 @@ superio_inw(ioreg, reg) {
     return (superio_inb(ioreg, reg) << 8) | superio_inb(ioreg, reg + 1);
 }
 
-find_superio_mmio() {
+find_superio_mmio_2e(&base, &size) {
     superio_enter(REG_2E);
     new id = superio_inw(REG_2E, SIO_CHIP_ID);
 
     if (id == IT8688E_DEVID || id == IT8689E_DEVID || id == IT8696E_DEVID || id == IT8698E_DEVID) {
         new b = superio_inb(REG_2E, 0x24);
         if ((b & 0x20) != 0) {
-            g_superio_size = 0x2000;
-            g_superio_base = (((b | 0xF0) << 24) | (b >> 6 << 20));
+            size = 0x2000;
+            base = (((b | 0xF0) << 24) | (b >> 6 << 20));
         }
     }
     superio_exit(REG_2E);
+}
 
-    new id2 = superio_inw(REG_4E, SIO_CHIP_ID);
-    if (id2 == 0xFFFF) {
+find_superio_mmio_4e(&base, &size) {
+    new id = superio_inw(REG_4E, SIO_CHIP_ID);
+    if (id == 0xFFFF) {
         superio_enter(REG_4E);
-        id2 = superio_inw(REG_4E, SIO_CHIP_ID);
+        id = superio_inw(REG_4E, SIO_CHIP_ID);
     }
-    if (id2 == IT8790E_DEVID || id2 == IT8792E_DEVID) {
+    if (id == IT8790E_DEVID || id == IT8792E_DEVID) {
         superio_outb(REG_4E, SIO_LDN, 0x0F);
         new b1 = superio_inb(REG_4E, 0xF5);
         new b2 = superio_inb(REG_4E, 0xF6);
-        g_superio_2_size = 0x2000;
-        g_superio_2_base = (((b2 << 4) | (b1 >> 4)) << 12) | 0xFF000000;
-    } else if (id2 == IT87952E_DEVID) {
+        size = 0x2000;
+        base = (((b2 << 4) | (b1 >> 4)) << 12) | 0xFF000000;
+    } else if (id == IT87952E_DEVID) {
         superio_outb(REG_4E, SIO_LDN, 0x0F);
         new b1 = superio_inb(REG_4E, 0xF5);
         new b2 = superio_inb(REG_4E, 0xF6);
         new b3 = superio_inb(REG_4E, 0xFC);
-        g_superio_2_size = 0x2000;
-        g_superio_2_base = (b3 << 24) | (((b2 << 4) | (b1 >> 4)) << 12) | 0xF0000000;
+        size = 0x2000;
+        base = (b3 << 24) | (((b2 << 4) | (b1 >> 4)) << 12) | 0xF0000000;
+    }
+}
+
+find_superio_mmio() {
+    // Double-check to avoid transient issues.
+    // The original Gigabyte code doesn't do this, but better safe than sorry.
+
+    new base_1 = 0, size_1 = 0;
+    find_superio_mmio_2e(base_1, size_1);
+    new base_2 = 0, size_2 = 0;
+    find_superio_mmio_4e(base_2, size_2);
+
+    microsleep(1000);
+
+    new base_1_2 = 0, size_1_2 = 0;
+    find_superio_mmio_2e(base_1_2, size_1_2);
+    new base_2_2 = 0, size_2_2 = 0;
+    find_superio_mmio_4e(base_2_2, size_2_2);
+
+    if (base_1 != 0 && size_1 != 0 && base_1 == base_1_2 && size_1 == size_1_2) {
+        g_superio_size = size_1;
+        g_superio_base = base_1;
+    }
+    if (base_2 != 0 && size_2 != 0 && base_2 == base_2_2 && size_2 == size_2_2) {
+        g_superio_2_size = size_2;
+        g_superio_2_base = base_2;
     }
 }
 
@@ -798,7 +826,7 @@ NTSTATUS:restore_config_if_needed() {
 /// @param out [0] = Original state
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_iomem_mmio_get_orig_state, 0, 1) {
+DEFINE_IOCTL_SIZED(ioctl_iomem_mmio_get_org_state, 0, 1) {
     new NTSTATUS:status = test_support();
     if (!NT_SUCCESS(status))
         return status;
@@ -811,7 +839,7 @@ DEFINE_IOCTL_SIZED(ioctl_iomem_mmio_get_orig_state, 0, 1) {
 /// @param out [0] = Current state
 /// @param out_size Must be 1
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_iomem_mmio_get_curr_state, 0, 1) {
+DEFINE_IOCTL_SIZED(ioctl_iomem_mmio_get_cur_state, 0, 1) {
     new NTSTATUS:status = test_support();
     if (!NT_SUCCESS(status))
         return status;

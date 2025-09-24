@@ -19,6 +19,7 @@
 
 #include <pawnio.inc>
 
+#define MSR_AMD64_PATCH_LEVEL       (0x0000008B)
 #define MSR_CORE_ENERGY_STAT        (0xC001029A)
 #define MSR_HARDWARE_PSTATE_STATUS  (0xC0010293)
 #define MSR_PKG_ENERGY_STAT         (0xC001029B)
@@ -27,8 +28,8 @@
 #define MSR_PWR_UNIT                (0xC0010299)
 #define MSR_MPERF_RO                (0xC00000E7)
 #define MSR_APERF_RO                (0xC00000E8)
-#define MSR_K7_EVNTSEL0			    (0xc0010000)
-#define MSR_K7_PERFCTR0			    (0xc0010004)
+#define MSR_K7_EVNTSEL0             (0xc0010000)
+#define MSR_K7_PERFCTR0             (0xc0010004)
 #define MSR_K7_HWCR                 (0xC0010015)
 #define MSR_K10_COFVID_STATUS       (0xC0010071)
 
@@ -37,9 +38,10 @@
 
 bool:is_allowed_msr_read(msr) {
     switch (msr) {
-        case MSR_CORE_ENERGY_STAT, MSR_HARDWARE_PSTATE_STATUS, MSR_PKG_ENERGY_STAT,
-             MSR_PSTATE_STATUS, MSR_PSTATE_0, MSR_PWR_UNIT, MSR_MPERF_RO, MSR_APERF_RO,
-             MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0, MSR_K7_HWCR, MSR_K10_COFVID_STATUS:
+        case MSR_AMD64_PATCH_LEVEL, MSR_CORE_ENERGY_STAT, MSR_HARDWARE_PSTATE_STATUS,
+             MSR_PKG_ENERGY_STAT, MSR_PSTATE_STATUS, MSR_PSTATE_0, MSR_PWR_UNIT,
+             MSR_MPERF_RO, MSR_APERF_RO,MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0, MSR_K7_HWCR,
+             MSR_K10_COFVID_STATUS:
             return true;
         default:
             return false;

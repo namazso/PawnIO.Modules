@@ -25,6 +25,13 @@
 #define MSR_PKG_ENERGY_STAT         (0xC001029B)
 #define MSR_PSTATE_STATUS           (0xC0010063)
 #define MSR_PSTATE_0                (0xC0010064)
+#define MSR_PSTATE_1                (0xC0010065)
+#define MSR_PSTATE_2                (0xC0010066)
+#define MSR_PSTATE_3                (0xC0010067)
+#define MSR_PSTATE_4                (0xC0010068)
+#define MSR_PSTATE_5                (0xC0010069)
+#define MSR_PSTATE_6                (0xC001006A)
+#define MSR_PSTATE_7                (0xC001006B)
 #define MSR_PWR_UNIT                (0xC0010299)
 #define MSR_MPERF_RO                (0xC00000E7)
 #define MSR_APERF_RO                (0xC00000E8)
@@ -39,9 +46,10 @@
 bool:is_allowed_msr_read(msr) {
     switch (msr) {
         case MSR_AMD64_PATCH_LEVEL, MSR_CORE_ENERGY_STAT, MSR_HARDWARE_PSTATE_STATUS,
-             MSR_PKG_ENERGY_STAT, MSR_PSTATE_STATUS, MSR_PSTATE_0, MSR_PWR_UNIT,
-             MSR_MPERF_RO, MSR_APERF_RO,MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0, MSR_K7_HWCR,
-             MSR_K10_COFVID_STATUS:
+             MSR_PKG_ENERGY_STAT, MSR_PSTATE_STATUS, MSR_PSTATE_0, MSR_PSTATE_1,
+             MSR_PSTATE_2, MSR_PSTATE_3, MSR_PSTATE_4, MSR_PSTATE_5, MSR_PSTATE_6,
+             MSR_PSTATE_7, MSR_PWR_UNIT, MSR_MPERF_RO, MSR_APERF_RO,MSR_K7_EVNTSEL0,
+             MSR_K7_PERFCTR0, MSR_K7_HWCR, MSR_K10_COFVID_STATUS:
             return true;
         default:
             return false;

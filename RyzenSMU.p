@@ -491,7 +491,7 @@ NTSTATUS:main() {
 
     debug_print(''RyzenSMU: family: %x model: %x pkg_type: %x\n'', family, model, pkg_type);
 
-    if (family != 0x17 && family != 0x19)
+    if (family != 0x17 && family != 0x19 && family != 0x1A)
         return STATUS_NOT_SUPPORTED;
 
     new CodeName:code_name = get_code_name(family, model, pkg_type);

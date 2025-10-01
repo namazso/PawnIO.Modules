@@ -326,11 +326,8 @@ NTSTATUS:send_command2(msg, &a1=0, &a2=0, &a3=0, &a4=0, &a5=0, &a6=0) {
 
 NTSTATUS:get_pm_table_version(&version) {
     switch (g_code_name) {
-        // Zen/Zen+ CPUs don't have table version and command to get the version
-        case CPU_SummitRidge, CPU_Naples, CPU_PinnacleRidge, CPU_Colfax: {
-            version = 0;
-            return STATUS_SUCCESS;
-        }
+        case CPU_SummitRidge, CPU_Naples, CPU_PinnacleRidge, CPU_Colfax:
+            return send_command2(0x0d, version);
         case CPU_Dali, CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2, CPU_FireFlight:
             return send_command2(0x0c, version);
         case CPU_Matisse, CPU_Vermeer, CPU_CastlePeak, CPU_Rome, CPU_Chagall, CPU_Milan:

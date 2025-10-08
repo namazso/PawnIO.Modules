@@ -262,7 +262,7 @@ NTSTATUS:transfer_table_to_dram() {
         case CPU_Renoir:
             return send_command2(0x65, three);
         case CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2:
-            return send_command2(0x06, three);
+            return send_command2(0x3D, three);
         default:
             return STATUS_NOT_SUPPORTED;
     }
@@ -422,7 +422,7 @@ DEFINE_IOCTL(ioctl_read_pm_table) {
         return STATUS_DEVICE_NOT_READY;
     new read_count = min(out_size, PAGE_SIZE / 8);
     new read_size = read_count * 8;
-    new VA:va = io_space_map(g_table_base, read_size);
+    new VA:va = io_space_map(g_table_base & 0XFFFFFFFF, read_size);
     new NTSTATUS:status = STATUS_SUCCESS;
     if (va) {
         new read;
@@ -491,7 +491,7 @@ NTSTATUS:main() {
 
     debug_print(''RyzenSMU: family: %x model: %x pkg_type: %x\n'', family, model, pkg_type);
 
-    if (family != 0x17 && family != 0x19)
+    if (family != 0x17 && family != 0x19 && family != 0x1A)
         return STATUS_NOT_SUPPORTED;
 
     new CodeName:code_name = get_code_name(family, model, pkg_type);

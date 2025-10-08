@@ -324,10 +324,6 @@ NTSTATUS:get_pm_table_base(&base) {
             return STATUS_SUCCESS;
         }
         case 3: {
-            new low;
-
-            // ## low
-
             args[0] = 3;
             status = send_command(fn[0], args);
             if (!NT_SUCCESS(status))
@@ -338,26 +334,7 @@ NTSTATUS:get_pm_table_base(&base) {
             if (!NT_SUCCESS(status))
                 return status;
 
-            low = args[0];
-
-            // ## high
-
-            args[0] = 3;
-            status = send_command(fn[1], args);
-            if (!NT_SUCCESS(status))
-                return status;
-
-            args[0] = 5;
-            status = send_command(fn[0], args);
-            if (!NT_SUCCESS(status))
-                return status;
-
-            args[0] = 5;
-            status = send_command(fn[2], args);
-            if (!NT_SUCCESS(status))
-                return status;
-
-            base = low | (args[0] << 32);
+            base = args[0];
             return STATUS_SUCCESS;
         }
         default:
@@ -422,7 +399,7 @@ DEFINE_IOCTL(ioctl_read_pm_table) {
         return STATUS_DEVICE_NOT_READY;
     new read_count = min(out_size, PAGE_SIZE / 8);
     new read_size = read_count * 8;
-    new VA:va = io_space_map(g_table_base & 0XFFFFFFFF, read_size);
+    new VA:va = io_space_map(g_table_base, read_size);
     new NTSTATUS:status = STATUS_SUCCESS;
     if (va) {
         new read;

@@ -38,7 +38,28 @@ const CodeName: {
     CPU_Milan,
     CPU_Dali,
     CPU_Raphael,
-    CPU_GraniteRidge
+    CPU_GraniteRidge,
+    CPU_Naples,
+    CPU_FireFlight,
+    CPU_Rome,
+    CPU_Chagall,
+    CPU_Lucienne,
+    CPU_Phoenix,
+    CPU_Phoenix2,
+    CPU_Mendocino,
+    CPU_Genoa,
+    CPU_StormPeak,
+    CPU_DragonRange,
+    CPU_Mero,
+    CPU_HawkPoint,
+    CPU_StrixPoint,
+    CPU_StrixHalo,
+    CPU_KrackanPoint,
+    CPU_KrackanPoint2,
+    CPU_Turin,
+    CPU_TurinD,
+    CPU_Bergamo,
+    CPU_ShimadaPeak,
 };
 
 const SMUStatus: {
@@ -69,9 +90,16 @@ NTSTATUS:smu_status_to_nt(SMUStatus:s) {
 CodeName:get_code_name(family, model, pkg_type) {
     switch ((family << 8) | model) {
         case 0x1701:
-            return pkg_type == 7 ? CPU_Threadripper : CPU_SummitRidge;
+        {
+            if (pkg_type == 3) { // socket SP3
+                return CPU_Naples;
+            } else if (pkg_type == 7) { // socket TRX
+                return CPU_Threadripper; // Whitehaven
+            }
+            return CPU_SummitRidge;
+        }
         case 0x1708:
-            return pkg_type == 7 ? CPU_Colfax : CPU_PinnacleRidge;
+            return (pkg_type == 3 || pkg_type == 7) ? CPU_Colfax : CPU_PinnacleRidge;
         case 0x1711:
             return CPU_RavenRidge;
         case 0x1718:
@@ -79,25 +107,63 @@ CodeName:get_code_name(family, model, pkg_type) {
         case 0x1720:
             return CPU_Dali;
         case 0x1731:
-            return CPU_CastlePeak;
+            return pkg_type == 7 ? CPU_CastlePeak : CPU_Rome;
+        case 0x1750:
+            return CPU_FireFlight; // Subor Z+, CPUID 0x00850F00
         case 0x1760:
             return CPU_Renoir;
+        case 0x1768:
+            return CPU_Lucienne;
         case 0x1771:
             return CPU_Matisse;
-        case 0x1790:
+        case 0x1790, 0x1791:
             return CPU_Vangogh;
-        case 0x1900:
+        case 0x1798:
+            return CPU_Mero;
+        case 0x17A0:
+            return CPU_Mendocino;
+        // Family 19h
+        case 0x1900, 0x1901:
             return CPU_Milan;
+        case 0x1908:
+            return CPU_Chagall;
+        case 0x1911:
+            return CPU_Genoa;
+        case 0x1918:
+            return CPU_StormPeak;
         case 0x1920, 0x1921:
             return CPU_Vermeer;
-        case 0x1940:
+        case 0x1944:
             return CPU_Rembrandt;
         case 0x1950:
             return CPU_Cezanne;
         case 0x1961:
-            return CPU_Raphael;
+            return pkg_type == 1 ? CPU_DragonRange : CPU_Raphael;
+        case 0x1974, 0x1975:
+            return CPU_Phoenix;
+        case 0x1978:
+            return CPU_Phoenix2;
+        case 0x197C:
+            return CPU_HawkPoint;
+        // Family 1Ah
+        case 0x1A02:
+            return CPU_Turin;
+        case 0x1A08:
+            return CPU_ShimadaPeak;
+        case 0x1A11:
+            return CPU_TurinD;
+        case 0x1A20:
+            return CPU_StrixPoint;
         case 0x1A44:
             return CPU_GraniteRidge;
+        case 0x1A60:
+            return CPU_KrackanPoint;
+        case 0x1A68:
+            return CPU_KrackanPoint2;
+        case 0x1A70:
+            return CPU_StrixHalo;
+        case 0x1AA0:
+            return CPU_Bergamo;
         default:
             return CPU_Undefined;
     }
@@ -110,6 +176,7 @@ new const k_addrinfo[][ADDRINFO] = [
     [ 0x3B10524, 0x3B10570, 0x3B10A40 ],
     [ 0x3B1051C, 0x3B10568, 0x3B10590 ],
     [ 0x3B10A20, 0x3B10A80, 0x3B10A88 ],
+    [ 0x3B10924, 0x3B10970, 0x3B10A40 ],
 ];
 
 new const k_addridx[] = [
@@ -123,14 +190,35 @@ new const k_addridx[] = [
     /* RavenRidge2   = */  2,
     /* SummitRidge   = */  1,
     /* PinnacleRidge = */  1,
-    /* Rembrandt     = */ -1,
+    /* Rembrandt     = */  2,
     /* Vermeer       = */  0,
-    /* Vangogh       = */ -1,
-    /* Cezanne       = */ -1,
-    /* Milan         = */ -1,
+    /* Vangogh       = */  2,
+    /* Cezanne       = */  2,
+    /* Milan         = */  0,
     /* Dali          = */  2,
     /* Raphael       = */  0,
     /* GraniteRidge  = */  0,
+    /* Naples        = */  1,
+    /* FireFlight    = */  2,
+    /* Rome          = */  0,
+    /* Chagall       = */  0,
+    /* Lucienne      = */  2,
+    /* Phoenix       = */  2,
+    /* Phoenix2      = */  2,
+    /* Mendocino     = */  2,
+    /* Genoa         = */  0,
+    /* StormPeak     = */  0,
+    /* DragonRange   = */  0,
+    /* Mero          = */  2,
+    /* HawkPoint     = */  2,
+    /* StrixPoint    = */  2,
+    /* StrixHalo     = */  2,
+    /* KrackanPoint  = */  2,
+    /* KrackanPoint2 = */ -1,
+    /* Turin         = */  0,
+    /* TurinD        = */  0,
+    /* Bergamo       = */  0,
+    /* ShimadaPeak   = */  3,
 ];
 
 const SMU_PCI_ADDR_REG = 0xC4;
@@ -238,13 +326,17 @@ NTSTATUS:send_command2(msg, &a1=0, &a2=0, &a3=0, &a4=0, &a5=0, &a6=0) {
 
 NTSTATUS:get_pm_table_version(&version) {
     switch (g_code_name) {
-        case CPU_RavenRidge, CPU_Picasso:
+        case CPU_SummitRidge, CPU_Naples, CPU_PinnacleRidge, CPU_Colfax:
+            return send_command2(0x0d, version);
+        case CPU_Dali, CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2, CPU_FireFlight:
             return send_command2(0x0c, version);
-        case CPU_Matisse, CPU_Vermeer:
+        case CPU_Matisse, CPU_Vermeer, CPU_CastlePeak, CPU_Rome, CPU_Chagall, CPU_Milan:
             return send_command2(0x08, version);
-        case CPU_Renoir:
+        case CPU_Renoir, CPU_Rembrandt, CPU_Cezanne, CPU_Mero, CPU_Vangogh, CPU_Phoenix,
+             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint, CPU_KrackanPoint:
             return send_command2(0x06, version);
-        case CPU_Raphael, CPU_GraniteRidge:
+        case CPU_Raphael, CPU_Genoa, CPU_StormPeak, CPU_DragonRange, CPU_GraniteRidge, CPU_Bergamo, 
+             CPU_Turin, CPU_TurinD, CPU_ShimadaPeak:
             return send_command2(0x05, version);
         default:
             return STATUS_NOT_SUPPORTED;
@@ -255,14 +347,18 @@ NTSTATUS:get_pm_table_version(&version) {
 NTSTATUS:transfer_table_to_dram() {
     new three = 3;
     switch (g_code_name) {
-        case CPU_Raphael, CPU_GraniteRidge:
+        case CPU_SummitRidge, CPU_Naples, CPU_PinnacleRidge, CPU_Colfax:
+            return send_command2(0x0a);
+        case CPU_Raphael, CPU_Genoa, CPU_StormPeak, CPU_DragonRange, CPU_GraniteRidge, CPU_Bergamo, 
+             CPU_Turin, CPU_TurinD, CPU_ShimadaPeak:
             return send_command2(0x03);
-        case CPU_Matisse, CPU_Vermeer:
+        case CPU_Matisse, CPU_Vermeer, CPU_CastlePeak, CPU_Rome, CPU_Chagall, CPU_Milan:
             return send_command2(0x05);
-        case CPU_Renoir:
+        case CPU_Renoir, CPU_Rembrandt, CPU_Cezanne, CPU_Mero, CPU_Vangogh, CPU_Phoenix,
+             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint, CPU_KrackanPoint:
             return send_command2(0x65, three);
-        case CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2:
-            return send_command2(0x06, three);
+        case CPU_Dali, CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2, CPU_FireFlight:
+            return send_command2(0x3d, three);
         default:
             return STATUS_NOT_SUPPORTED;
     }
@@ -274,24 +370,26 @@ NTSTATUS:get_pm_table_base(&base) {
     new class;
     new fn[3];
     switch (g_code_name) {
-        case CPU_Raphael, CPU_GraniteRidge: {
+        case CPU_Raphael, CPU_Genoa, CPU_StormPeak, CPU_DragonRange, CPU_GraniteRidge, CPU_Bergamo, 
+             CPU_Turin, CPU_TurinD, CPU_ShimadaPeak: {
             fn[0] = 0x04;
             class = 1;
         }
-        case CPU_Vermeer, CPU_Matisse, CPU_CastlePeak: {
+        case CPU_Matisse, CPU_Vermeer, CPU_CastlePeak, CPU_Rome, CPU_Chagall, CPU_Milan: {
             fn[0] = 0x06;
             class = 1;
         }
-        case CPU_Renoir: {
+        case CPU_Renoir, CPU_Rembrandt, CPU_Cezanne, CPU_Mero, CPU_Vangogh, CPU_Phoenix,
+             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint, CPU_KrackanPoint: {
             fn[0] = 0x66;
             class = 1;
         }
-        case CPU_Colfax, CPU_PinnacleRidge: {
+        case CPU_Colfax, CPU_PinnacleRidge, CPU_SummitRidge, CPU_Naples: {
             fn[0] = 0x0b;
             fn[1] = 0x0c;
             class = 2;
         }
-        case CPU_Dali, CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2: {
+        case CPU_Dali, CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2, CPU_FireFlight: {
             fn[0] = 0x0a;
             fn[1] = 0x3d;
             fn[2] = 0x0b;
@@ -491,7 +589,7 @@ NTSTATUS:main() {
 
     debug_print(''RyzenSMU: family: %x model: %x pkg_type: %x\n'', family, model, pkg_type);
 
-    if (family != 0x17 && family != 0x19)
+    if (family != 0x17 && family != 0x19 && family != 0x1A)
         return STATUS_NOT_SUPPORTED;
 
     new CodeName:code_name = get_code_name(family, model, pkg_type);

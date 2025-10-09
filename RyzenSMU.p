@@ -54,8 +54,8 @@ const CodeName: {
     CPU_HawkPoint,
     CPU_StrixPoint,
     CPU_StrixHalo,
-    CPU_KrakanPoint,
-    CPU_KrakanPoint2,
+    CPU_KrackanPoint,
+    CPU_KrackanPoint2,
     CPU_Turin,
     CPU_TurinD,
     CPU_Bergamo,
@@ -157,9 +157,9 @@ CodeName:get_code_name(family, model, pkg_type) {
         case 0x1A44:
             return CPU_GraniteRidge;
         case 0x1A60:
-            return CPU_KrakanPoint;
+            return CPU_KrackanPoint;
         case 0x1A68:
-            return CPU_KrakanPoint2;
+            return CPU_KrackanPoint2;
         case 0x1A70:
             return CPU_StrixHalo;
         case 0x1AA0:
@@ -213,8 +213,8 @@ new const k_addridx[] = [
     /* HawkPoint     = */  2,
     /* StrixPoint    = */  2,
     /* StrixHalo     = */  2,
-    /* KrakanPoint   = */ -1,
-    /* KrakanPoint2  = */ -1,
+    /* KrackanPoint  = */  2,
+    /* KrackanPoint2 = */ -1,
     /* Turin         = */  0,
     /* TurinD        = */  0,
     /* Bergamo       = */  0,
@@ -333,7 +333,7 @@ NTSTATUS:get_pm_table_version(&version) {
         case CPU_Matisse, CPU_Vermeer, CPU_CastlePeak, CPU_Rome, CPU_Chagall, CPU_Milan:
             return send_command2(0x08, version);
         case CPU_Renoir, CPU_Rembrandt, CPU_Cezanne, CPU_Mero, CPU_Vangogh, CPU_Phoenix,
-             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint:
+             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint, CPU_KrackanPoint:
             return send_command2(0x06, version);
         case CPU_Raphael, CPU_Genoa, CPU_StormPeak, CPU_DragonRange, CPU_GraniteRidge, CPU_Bergamo, 
              CPU_Turin, CPU_TurinD, CPU_ShimadaPeak:
@@ -355,7 +355,7 @@ NTSTATUS:transfer_table_to_dram() {
         case CPU_Matisse, CPU_Vermeer, CPU_CastlePeak, CPU_Rome, CPU_Chagall, CPU_Milan:
             return send_command2(0x05);
         case CPU_Renoir, CPU_Rembrandt, CPU_Cezanne, CPU_Mero, CPU_Vangogh, CPU_Phoenix,
-             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint:
+             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint, CPU_KrackanPoint:
             return send_command2(0x65, three);
         case CPU_Dali, CPU_Picasso, CPU_RavenRidge, CPU_RavenRidge2, CPU_FireFlight:
             return send_command2(0x3d, three);
@@ -380,7 +380,7 @@ NTSTATUS:get_pm_table_base(&base) {
             class = 1;
         }
         case CPU_Renoir, CPU_Rembrandt, CPU_Cezanne, CPU_Mero, CPU_Vangogh, CPU_Phoenix,
-             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint: {
+             CPU_Phoenix2, CPU_HawkPoint, CPU_Mendocino, CPU_StrixHalo, CPU_StrixPoint, CPU_KrackanPoint: {
             fn[0] = 0x66;
             class = 1;
         }

@@ -422,10 +422,6 @@ NTSTATUS:get_pm_table_base(&base) {
             return STATUS_SUCCESS;
         }
         case 3: {
-            new low;
-
-            // ## low
-
             args[0] = 3;
             status = send_command(fn[0], args);
             if (!NT_SUCCESS(status))
@@ -436,26 +432,7 @@ NTSTATUS:get_pm_table_base(&base) {
             if (!NT_SUCCESS(status))
                 return status;
 
-            low = args[0];
-
-            // ## high
-
-            args[0] = 3;
-            status = send_command(fn[1], args);
-            if (!NT_SUCCESS(status))
-                return status;
-
-            args[0] = 5;
-            status = send_command(fn[0], args);
-            if (!NT_SUCCESS(status))
-                return status;
-
-            args[0] = 5;
-            status = send_command(fn[2], args);
-            if (!NT_SUCCESS(status))
-                return status;
-
-            base = low | (args[0] << 32);
+            base = args[0];
             return STATUS_SUCCESS;
         }
         default:

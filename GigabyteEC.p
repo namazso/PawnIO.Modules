@@ -39,9 +39,11 @@ stock mask64on32(in, mask) {
 
 new g_superio_base = 0;
 new g_superio_size = 0;
+new g_superio_chipid = 0xFFFF;
 
 new g_superio_2_base = 0;
 new g_superio_2_size = 0;
+new g_superio_2_chipid = 0xFFFF;
 
 new bool:g_is_intel;
 
@@ -79,9 +81,10 @@ superio_inw(ioreg, reg) {
     return (superio_inb(ioreg, reg) << 8) | superio_inb(ioreg, reg + 1);
 }
 
-find_superio_mmio_2e(&base, &size) {
+find_superio_mmio_2e(&base, &size, &chipid) {
     superio_enter(REG_2E);
     new id = superio_inw(REG_2E, SIO_CHIP_ID);
+    chipid = id;
 
     if (id == IT8688E_DEVID || id == IT8689E_DEVID || id == IT8696E_DEVID || id == IT8698E_DEVID) {
         new b = superio_inb(REG_2E, 0x24);
@@ -93,12 +96,13 @@ find_superio_mmio_2e(&base, &size) {
     superio_exit(REG_2E);
 }
 
-find_superio_mmio_4e(&base, &size) {
+find_superio_mmio_4e(&base, &size, &chipid) {
     new id = superio_inw(REG_4E, SIO_CHIP_ID);
     if (id == 0xFFFF) {
         superio_enter(REG_4E);
         id = superio_inw(REG_4E, SIO_CHIP_ID);
     }
+    chipid = id;
     if (id == IT8790E_DEVID || id == IT8792E_DEVID) {
         superio_outb(REG_4E, SIO_LDN, 0x0F);
         new b1 = superio_inb(REG_4E, 0xF5);
@@ -119,17 +123,22 @@ find_superio_mmio() {
     // Double-check to avoid transient issues.
     // The original Gigabyte code doesn't do this, but better safe than sorry.
 
+    new chipid_1, chipid_2;
+
     new base_1 = 0, size_1 = 0;
-    find_superio_mmio_2e(base_1, size_1);
+    find_superio_mmio_2e(base_1, size_1, chipid_1);
     new base_2 = 0, size_2 = 0;
-    find_superio_mmio_4e(base_2, size_2);
+    find_superio_mmio_4e(base_2, size_2, chipid_2);
 
     microsleep(1000);
 
     new base_1_2 = 0, size_1_2 = 0;
-    find_superio_mmio_2e(base_1_2, size_1_2);
+    find_superio_mmio_2e(base_1_2, size_1_2, chipid_1);
     new base_2_2 = 0, size_2_2 = 0;
-    find_superio_mmio_4e(base_2_2, size_2_2);
+    find_superio_mmio_4e(base_2_2, size_2_2, chipid_2);
+
+    g_superio_chipid = chipid_1;
+    g_superio_2_chipid = chipid_2;
 
     if (base_1 != 0 && size_1 != 0 && base_1 == base_1_2 && size_1 == size_1_2) {
         g_superio_size = size_1;
@@ -147,19 +156,21 @@ bool:have_superio_mmio() {
 
 /// Find MMIO for SuperIO chips.
 ///
-/// @param out [0] = Slot 0 base [1] = Slot 0 size [2] = Slot 1 base [3] = Slot 1 size
-/// @param out_size Must be 4
+/// @param out [0] = Slot 0 base [1] = Slot 0 size [2] = Slot 0 ChipID [3] = Slot 1 base [4] = Slot 1 size [5] = Slot 1 ChipID
+/// @param out_size Must be 6
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_find_superio_mmio, 0, 4) {
+DEFINE_IOCTL_SIZED(ioctl_find_superio_mmio, 0, 6) {
     find_superio_mmio();
     
-    debug_print("SuperIO 1 MMIO: Base = 0x%X, Size = 0x%X\n", g_superio_base, g_superio_size);
-    debug_print("SuperIO 2 MMIO: Base = 0x%X, Size = 0x%X\n", g_superio_2_base, g_superio_2_size);
+    debug_print("SuperIO 1 MMIO: Base = 0x%X, Size = 0x%X, ChipID = 0x%X\n", g_superio_base, g_superio_size, g_superio_chipid);
+    debug_print("SuperIO 2 MMIO: Base = 0x%X, Size = 0x%X, ChipID = 0x%X\n", g_superio_2_base, g_superio_2_size, g_superio_2_chipid);
 
     out[0] = g_superio_base;
     out[1] = g_superio_size;
-    out[2] = g_superio_2_base;
-    out[3] = g_superio_2_size;
+    out[2] = g_superio_chipid;
+    out[3] = g_superio_2_base;
+    out[4] = g_superio_2_size;
+    out[5] = g_superio_2_chipid;
 
     return STATUS_SUCCESS;
 }

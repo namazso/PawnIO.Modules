@@ -64,6 +64,18 @@ bool:is_allowed_msr_read(msr) {
     return false;
 }
 
+bool:is_allowed_msr_write(msr) {
+    switch (msr) {
+        case MSR_PSTATE_0, MSR_PSTATE_1, MSR_PSTATE_2, 
+            MSR_PSTATE_3, MSR_PSTATE_4, MSR_PSTATE_5, 
+            MSR_PSTATE_6, MSR_PSTATE_7, MSR_K7_HWCR:
+            return true;
+        default:
+            return false;
+    }
+    return false;
+}
+
 /// Read MSR.
 ///
 /// @param in [0] = MSR
@@ -81,6 +93,24 @@ DEFINE_IOCTL_SIZED(ioctl_read_msr, 1, 1) {
     new NTSTATUS:status = msr_read(msr, value);
 
     out[0] = value;
+
+    return status;
+}
+
+/// Write MSR.
+///
+/// @param in [0] = MSR, [1] = Value write
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+DEFINE_IOCTL_SIZED(ioctl_write_msr, 2, 0) {
+    new msr = in[0] & 0xFFFFFFFF;
+
+    if (!is_allowed_msr_write(msr))
+        return STATUS_ACCESS_DENIED;
+        
+    new NTSTATUS:status = msr_write(msr, in[1]);
 
     return status;
 }

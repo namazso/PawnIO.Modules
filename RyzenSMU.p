@@ -214,7 +214,7 @@ new const k_addridx[] = [
     /* StrixPoint    = */  2,
     /* StrixHalo     = */  2,
     /* KrackanPoint  = */  2,
-    /* KrackanPoint2 = */ -1,
+    /* KrackanPoint2 = */  2,
     /* Turin         = */  0,
     /* TurinD        = */  0,
     /* Bergamo       = */  0,
@@ -443,6 +443,27 @@ NTSTATUS:get_pm_table_base(&base) {
 
 new g_table_base;
 
+NTSTATUS:check_smu_register_range(cmd) {
+    if (cmd < 0 || cmd > 0xFFFFFFFF) return STATUS_NOT_SUPPORTED;
+
+    // Check for range:
+
+    // 1. 0x3B10*** (0x3B10000 – 0x3B10FFF) SMU Mailboxes
+    if ((cmd & 0xFFFFF000) == 0x3B10000) return STATUS_SUCCESS;
+
+    // 2. 0x130000*0 (0x13000000 - 0x130000F0) SMU Mailboxes on Pre-Ryzen
+    if ((cmd & 0xFFFFFFF0) == (0x13000000)) return STATUS_SUCCESS;
+
+    // 3. 0x56***-0x5A*** (0x56000 – 0x5AFFF) SMU SVI2 Planes
+    if (cmd >= 0x56000 && cmd <= 0x5AFFF) return STATUS_SUCCESS;
+
+    // 4. 0x6F*** (0x6F000 – 0x6FFFF) SMU Extended SVI2 Planes
+    if ((cmd & 0xFFFFF000) == 0x6F000) return STATUS_SUCCESS;
+
+    // If not in expected range
+    return STATUS_NOT_SUPPORTED;
+}
+
 /// Resolve physical memory table.
 ///
 /// @param in Unused
@@ -544,6 +565,84 @@ DEFINE_IOCTL_SIZED(ioctl_get_smu_version, 0, 1) {
         return status;
 
     out[0] = args[0];
+    return STATUS_SUCCESS;
+}
+
+/// Read SMU register via PCI config space.
+///
+/// @param in [0] = Smu register address to read
+/// @param in_size Must be 1
+/// @param out [0] = Value read from the register
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+DEFINE_IOCTL_SIZED(ioctl_read_smu_register, 1, 1) {
+    // Validate input
+    new NTSTATUS:status = check_smu_register_range(in[0]);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    new data;
+    status = read_reg(in[0], data);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    // Write out
+    out[0] = data;
+    return STATUS_SUCCESS;
+}
+
+/// Write value to SMU register via PCI config space.
+///
+/// @param in [0] = Smu register address to write
+/// @param in [1] = Value to write
+/// @param in_size Must be 2
+/// @param out None
+/// @param out_size Must be 0
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+DEFINE_IOCTL_SIZED(ioctl_write_smu_register, 2, 0) {
+    // Validate input
+    new NTSTATUS:status = check_smu_register_range(in[0]);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = write_reg(in[0], in[1]);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    return STATUS_SUCCESS;
+}
+
+/// Send SMU command.
+///
+/// @param in [0] = Smu command, [1-6] = Smu arguments
+/// @param in_size Must be 7
+/// @param out [0-5] = Smu arguments
+/// @param out_size Must be 6
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
+DEFINE_IOCTL_SIZED(ioctl_send_smu_command, 7, 6) {
+    if ((in[0] & ~0xFF) != 0)
+        return STATUS_NOT_SUPPORTED;
+
+    new args[6];
+    args[0] = in[1];
+    args[1] = in[2];
+    args[2] = in[3];
+    args[3] = in[4];
+    args[4] = in[5];
+    args[5] = in[6];
+    new NTSTATUS:status = send_command(in[0], args);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    out[0] = args[0];
+    out[1] = args[1];
+    out[2] = args[2];
+    out[3] = args[3];
+    out[4] = args[4];
+    out[5] = args[5];
     return STATUS_SUCCESS;
 }
 

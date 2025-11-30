@@ -444,7 +444,7 @@ NTSTATUS:get_pm_table_base(&base) {
 new g_table_base;
 
 NTSTATUS:check_smu_register_range(cmd) {
-    if (cmd < 0) return STATUS_NOT_SUPPORTED;
+    if (cmd < 0 || cmd > 0xFFFFFFFF) return STATUS_NOT_SUPPORTED;
 
     // Check for range:
 
@@ -578,11 +578,12 @@ DEFINE_IOCTL_SIZED(ioctl_get_smu_version, 0, 1) {
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_read_smu_register, 1, 1) {
     // Validate input
-    if (check_smu_register_range(in[0]) != STATUS_SUCCESS)
-        return STATUS_ACCESS_DENIED;
+    new NTSTATUS:status = check_smu_register_range(in[0]);
+    if (!NT_SUCCESS(status))
+        return status;
 
     new data;
-    new NTSTATUS:status = read_reg(in[0], data);
+    status = read_reg(in[0], data);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -602,10 +603,11 @@ DEFINE_IOCTL_SIZED(ioctl_read_smu_register, 1, 1) {
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_write_smu_register, 2, 0) {
     // Validate input
-    if (check_smu_register_range(in[0]) != STATUS_SUCCESS)
-        return STATUS_ACCESS_DENIED;
+    new NTSTATUS:status = check_smu_register_range(in[0]);
+    if (!NT_SUCCESS(status))
+        return status;
 
-    new NTSTATUS:status = write_reg(in[0], in[1]);
+    status = write_reg(in[0], in[1]);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -621,7 +623,7 @@ DEFINE_IOCTL_SIZED(ioctl_write_smu_register, 2, 0) {
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_send_smu_command, 7, 6) {
-    if ((in[0] & 0xFFFFFF00) != 0)
+    if ((in[0] & ~0xFF) != 0)
         return STATUS_NOT_SUPPORTED;
 
     new args[6];

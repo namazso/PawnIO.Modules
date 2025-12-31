@@ -152,7 +152,7 @@ CodeName:get_code_name(family, model, pkg_type) {
             return CPU_ShimadaPeak;
         case 0x1A11:
             return CPU_TurinD;
-        case 0x1A20:
+        case 0x1A20, 0x1A24:
             return CPU_StrixPoint;
         case 0x1A44:
             return CPU_GraniteRidge;

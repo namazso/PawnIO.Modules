@@ -29,10 +29,14 @@
 #define EC_LPC_ADDR_HOST_PACKET 0x800 /* Offset of version 3 packet */
 #define EC_LPC_HOST_PACKET_SIZE 0x100 /* Max size of version 3 packet */
 
+#define EC_HOST_CMD_REGION0       0x800
+#define EC_HOST_CMD_MEC_REGION_SIZE 0x8
 
 // 0x900 is the default, 0xE00 is used by AMD Framework Laptops
 #define EC_LPC_ADDR_MEMMAP 0x900
 #define EC_LPC_ADDR_MEMMAP_FWAMD 0xE00
+// Address of the MEC memmap when accessed over the EMI
+#define EC_MEC_ADDR_MEMMAP 0x100
 #define EC_MEMMAP_SIZE 255 /* ACPI IO buffer max is 255 bytes */
 #define EC_MEMMAP_TEXT_MAX 8 /* Size of a string in the memory map */
 
@@ -71,6 +75,17 @@
 
 #define EC_HOST_RESPONSE_VERSION 3
 
+#define MEC_ACCESS_TYPE_BYTE 0x00
+#define MEC_ACCESS_TYPE_WORD 0x01
+#define MEC_ACCESS_TYPE_LONG 0x02
+#define MEC_ACCESS_TYPE_LONG_AUTOINCREMENT 0x03
+
+#define MEC_EMI_EC_ADDRESS_B0 (EC_HOST_CMD_REGION0 + 0x02)
+#define MEC_EMI_EC_ADDRESS_B1 (EC_HOST_CMD_REGION0 + 0x03)
+#define MEC_EMI_EC_DATA_B0 (EC_HOST_CMD_REGION0 + 0x04)
+#define MEC_EMI_EC_DATA_B1 (EC_HOST_CMD_REGION0 + 0x05)
+#define MEC_EMI_EC_DATA_B2 (EC_HOST_CMD_REGION0 + 0x06)
+#define MEC_EMI_EC_DATA_B3 (EC_HOST_CMD_REGION0 + 0x07)
 
 #define EC_MEMMAP_ID 0x20 /* 0x20 == 'E', 0x21 == 'C' */
 
@@ -84,9 +99,67 @@
 
 
 new memmap_addr;
+new is_mec = false;
 
 new ec_command_proto;
 
+Void:mec_transfer(address, bytes, write, data[]) {
+    new pos = 0;
+
+    /* Unaligned start address */
+    if (address % 4 > 0) {
+        io_out_word(MEC_EMI_EC_ADDRESS_B0, (address & 0xFFFC) | MEC_ACCESS_TYPE_BYTE);
+        for (new i = address % 4; i < 4; i++) {
+            if (write) {
+                io_out_byte(MEC_EMI_EC_DATA_B0 + i, data[pos++]);
+            } else {
+                data[pos++] = io_in_byte(MEC_EMI_EC_DATA_B0 + i);
+            }
+        }
+        address = (address + 4) & 0xFFFC;
+    }
+
+    /* Aligned addresses */
+    if (bytes - pos >= 4) {
+        io_out_word(MEC_EMI_EC_ADDRESS_B0, (address & 0xFFFC) | MEC_ACCESS_TYPE_LONG_AUTOINCREMENT);
+        while (bytes - pos >= 4) {
+            for (new i = 0; i < 4; i++) {
+                if (write) {
+                    io_out_byte(MEC_EMI_EC_DATA_B0 + i, data[pos++]);
+                } else {
+                    data[pos++] = io_in_byte(MEC_EMI_EC_DATA_B0 + i);
+                }
+            }
+            address += 4;
+        }
+    }
+
+    /* Unaligned end address */
+    if (bytes - pos > 0) {
+        io_out_word(MEC_EMI_EC_ADDRESS_B0, (address & 0xFFFC) | MEC_ACCESS_TYPE_BYTE);
+        for (new i = 0; i < (bytes - pos); i++) {
+            if (write) {
+                io_out_byte(MEC_EMI_EC_DATA_B0 + i, data[pos + i]);
+            } else {
+                data[pos + i] = io_in_byte(MEC_EMI_EC_DATA_B0 + i);
+            }
+        }
+    }
+}
+
+Void:ec_transfer(address, bytes, write, data[]) {
+    if (is_mec) {
+        mec_transfer(address, bytes, write, data);
+    } else {
+        for (new i = 0; i < bytes; i++) {
+            if (write) {
+                io_out_byte(EC_LPC_ADDR_HOST_PACKET + address + i, data[i]);
+            } else {
+                data[i] = io_in_byte(EC_LPC_ADDR_HOST_PACKET + address + i);
+            }
+        }
+    }
+}
 
 NTSTATUS:wait_for_ec(const status_addr, const timeout_usec) {
 	new delay = INITIAL_UDELAY;
@@ -126,8 +199,8 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
     request[7] = ec_out_size >>> 8;
 
     /* Copy data and start checksum */
+    ec_transfer(rq_size, ec_out_size, true, ec_out_data);
     for (new i = 0; i < ec_out_size; i++) {
-        io_out_byte(EC_LPC_ADDR_HOST_PACKET + rq_size + i, ec_out_data[i]);
         csum += ec_out_data[i] & 0xff;
     }
 
@@ -139,8 +212,7 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
     request[1] = (-csum) & 0xff;
 
     /* Copy header */
-    for (new i = 0; i < rq_size; i++)
-        io_out_byte(EC_LPC_ADDR_HOST_PACKET + i, request[i]);
+    ec_transfer(0, rq_size, true, request);
 
     /* Start the command */
     io_out_byte(EC_LPC_ADDR_HOST_CMD, EC_COMMAND_PROTOCOL_3);
@@ -165,8 +237,8 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
     csum = 0;
     // struct_version, checksum, result, data_len, reserved
     new data_out[rs_size];
+    ec_transfer(0, rs_size, false, data_out);
     for (new i = 0; i < rs_size; i++) {
-        data_out[i] = io_in_byte(EC_LPC_ADDR_HOST_PACKET + i);
         csum += data_out[i];
     }
 
@@ -189,8 +261,8 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
     }
 
     /* Read back data and update checksum */
+    ec_transfer(rs_size, data_len, false, ec_in_data);
     for (new i = 0; i < data_len; i++) {
-        ec_in_data[i] = io_in_byte(EC_LPC_ADDR_HOST_PACKET + rs_size + i);
         csum += ec_in_data[i];
     }
 
@@ -207,8 +279,12 @@ NTSTATUS:ec_readmem_lpc(offset, bytes, dest[EC_MEMMAP_SIZE]) {
     if ((offset + bytes) >= EC_MEMMAP_SIZE)
         return STATUS_INVALID_PARAMETER;
 
-    for (new i = 0; i < bytes; i++)
-        dest[i] = io_in_byte(memmap_addr + offset + i);
+    if (is_mec) {
+        mec_transfer(memmap_addr + offset, bytes, false, dest);
+    } else {
+        for (new i = 0; i < bytes; i++)
+            dest[i] = io_in_byte(memmap_addr + offset + i);
+    }
 
     return STATUS_SUCCESS;
 }
@@ -246,12 +322,26 @@ NTSTATUS:comm_init_lpc() {
         memmap_addr = EC_LPC_ADDR_MEMMAP_FWAMD;
     }
     if (!memmap_addr) {
-        debug_print(''Cannot find EC memmap.\n'');
-        return STATUS_NOT_SUPPORTED;
+        /* Probe for an MEC EC */
+        io_out_word(MEC_EMI_EC_ADDRESS_B0, ((EC_MEC_ADDR_MEMMAP + EC_MEMMAP_ID) & 0xFFFC) | MEC_ACCESS_TYPE_WORD);
+        if (io_in_byte(MEC_EMI_EC_DATA_B0) == 'E' &&
+            io_in_byte(MEC_EMI_EC_DATA_B1) == 'C') {
+            is_mec = true;
+            memmap_addr = EC_MEC_ADDR_MEMMAP;
+        } else {
+            debug_print(''Cannot find EC memmap.\n'');
+            return STATUS_NOT_SUPPORTED;
+        }
     }
 
     /* Check which command version we'll use */
-    new version = io_in_byte(memmap_addr + EC_MEMMAP_HOST_CMD_FLAGS);
+    new version;
+    if (is_mec) {
+        io_out_word(MEC_EMI_EC_ADDRESS_B0, ((memmap_addr + EC_MEMMAP_HOST_CMD_FLAGS) & 0xFFFC) | MEC_ACCESS_TYPE_BYTE);
+        version = io_in_byte(MEC_EMI_EC_DATA_B0 + (EC_MEMMAP_HOST_CMD_FLAGS % 4))
+    } else {
+        version = io_in_byte(memmap_addr + EC_MEMMAP_HOST_CMD_FLAGS);
+    }
 
     if (version & EC_HOST_CMD_FLAG_VERSION_3) {
         /* Protocol version 3 */

@@ -20,14 +20,14 @@
 #include <pawnio.inc>
 
 #define MSR_AMD64_PATCH_LEVEL       (0x0000008B)
-#define MSR_CORE_ENERGY_STAT        (0xC001029A)
-#define MSR_HARDWARE_PSTATE_STATUS  (0xC0010293)
-#define MSR_PKG_ENERGY_STAT         (0xC001029B)
-#define MSR_AMD_CPPC_CAP1           (0xC00102B0)
-#define MSR_AMD_CPPC_ENABLE         (0xC00102B1)
-#define MSR_AMD_CPPC_CAP2           (0xC00102B2)
-#define MSR_AMD_CPPC_REQ            (0xC00102B3)
-#define MSR_AMD_CPPC_STATUS         (0xC00102B4)
+
+#define MSR_MPERF_RO                (0xC00000E7)
+#define MSR_APERF_RO                (0xC00000E8)
+
+#define MSR_K7_EVNTSEL0             (0xC0010000)
+#define MSR_K7_PERFCTR0             (0xC0010004)
+#define MSR_K7_HWCR                 (0xC0010015)
+
 #define MSR_PSTATE_CURRENT_LIMIT    (0xC0010061)
 #define MSR_PSTATE_STATUS           (0xC0010063)
 #define MSR_PSTATE_0                (0xC0010064)
@@ -38,25 +38,37 @@
 #define MSR_PSTATE_5                (0xC0010069)
 #define MSR_PSTATE_6                (0xC001006A)
 #define MSR_PSTATE_7                (0xC001006B)
-#define MSR_PWR_UNIT                (0xC0010299)
-#define MSR_MPERF_RO                (0xC00000E7)
-#define MSR_APERF_RO                (0xC00000E8)
-#define MSR_K7_EVNTSEL0             (0xc0010000)
-#define MSR_K7_PERFCTR0             (0xc0010004)
-#define MSR_K7_HWCR                 (0xC0010015)
 #define MSR_K10_COFVID_STATUS       (0xC0010071)
+
+#define MSR_PMGT_MISC               (0xC0010292)
+#define MSR_HARDWARE_PSTATE_STATUS  (0xC0010293)
+#define MSR_CSTATE_CONFIG           (0xC0010296)
+#define MSR_PWR_UNIT                (0xC0010299)
+#define MSR_CORE_ENERGY_STAT        (0xC001029A)
+#define MSR_PKG_ENERGY_STAT         (0xC001029B)
+
+#define MSR_AMD_CPPC_CAP1           (0xC00102B0)
+#define MSR_AMD_CPPC_ENABLE         (0xC00102B1)
+#define MSR_AMD_CPPC_CAP2           (0xC00102B2)
+#define MSR_AMD_CPPC_REQ            (0xC00102B3)
+#define MSR_AMD_CPPC_STATUS         (0xC00102B4)
 
 #define SMN_INDEX_OFFSET	(0x60)
 #define SMN_DATA_OFFSET		(0x64)
 
 bool:is_allowed_msr_read(msr) {
     switch (msr) {
-        case MSR_AMD64_PATCH_LEVEL, MSR_CORE_ENERGY_STAT, MSR_HARDWARE_PSTATE_STATUS,
-             MSR_PKG_ENERGY_STAT, MSR_AMD_CPPC_CAP1, MSR_AMD_CPPC_ENABLE, MSR_AMD_CPPC_CAP2,
-             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS, MSR_PSTATE_CURRENT_LIMIT, MSR_PSTATE_STATUS, MSR_PSTATE_0,
-             MSR_PSTATE_1, MSR_PSTATE_2, MSR_PSTATE_3, MSR_PSTATE_4, MSR_PSTATE_5, MSR_PSTATE_6, MSR_PSTATE_7,
-             MSR_PWR_UNIT, MSR_MPERF_RO, MSR_APERF_RO,MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0,
-             MSR_K7_HWCR, MSR_K10_COFVID_STATUS:
+        case MSR_AMD64_PATCH_LEVEL,
+             MSR_MPERF_RO, MSR_APERF_RO,
+             MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0, MSR_K7_HWCR,
+             MSR_PSTATE_CURRENT_LIMIT, MSR_PSTATE_STATUS,
+             MSR_PSTATE_0, MSR_PSTATE_1, MSR_PSTATE_2, MSR_PSTATE_3,
+             MSR_PSTATE_4, MSR_PSTATE_5, MSR_PSTATE_6, MSR_PSTATE_7,
+             MSR_K10_COFVID_STATUS,
+             MSR_PMGT_MISC, MSR_HARDWARE_PSTATE_STATUS, MSR_CSTATE_CONFIG,
+             MSR_PWR_UNIT, MSR_CORE_ENERGY_STAT, MSR_PKG_ENERGY_STAT,
+             MSR_AMD_CPPC_CAP1, MSR_AMD_CPPC_ENABLE, MSR_AMD_CPPC_CAP2,
+             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS:
             return true;
         default:
             return false;
@@ -66,9 +78,11 @@ bool:is_allowed_msr_read(msr) {
 
 bool:is_allowed_msr_write(msr) {
     switch (msr) {
-        case MSR_PSTATE_0, MSR_PSTATE_1, MSR_PSTATE_2, 
-            MSR_PSTATE_3, MSR_PSTATE_4, MSR_PSTATE_5, 
-            MSR_PSTATE_6, MSR_PSTATE_7, MSR_K7_HWCR:
+        case MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0, MSR_K7_HWCR,
+             MSR_PSTATE_0, MSR_PSTATE_1, MSR_PSTATE_2, MSR_PSTATE_3,
+             MSR_PSTATE_4, MSR_PSTATE_5, MSR_PSTATE_6, MSR_PSTATE_7,
+             MSR_PMGT_MISC, MSR_CSTATE_CONFIG, MSR_AMD_CPPC_ENABLE,
+             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS:
             return true;
         default:
             return false;

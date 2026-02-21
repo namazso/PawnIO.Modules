@@ -19,7 +19,7 @@
 
 #include <pawnio.inc>
 
-// PawnIO Intel PCU Driver
+// PawnIO Intel Skylake IMC Driver
 // Most of this has been reverse engineered from other software.
 
 // The global SMBus mutex has to be used to stay compliant with other software.
@@ -34,7 +34,7 @@
 #define I2C_SMBUS_BYTE_DATA		    2
 #define I2C_SMBUS_WORD_DATA		    3
 
-//PCU SMBus Register Layout (offsets from PCI config space of PCU / SMBus device)
+//IMC SMBus Register Layout (offsets from PCI config space of IMC / SMBus device)
 #define REG_STEP 0x04
 #define CMD_BASE 0x9C //Command = CMD_BASE + idx * 4
 #define STS_BASE 0xA8 //Status  = STS_BASE + idx * 4
@@ -77,7 +77,7 @@ new pci_addresses[1][3] = [
 new pci_address[3];
 new smbus_index = 0;
 
-NTSTATUS:intel_pcu_init()
+NTSTATUS:intel_imc_init()
 {
     new NTSTATUS:status;
 
@@ -358,6 +358,5 @@ NTSTATUS:main()
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
-    return intel_pcu_init();
+    return intel_imc_init();
 }
-

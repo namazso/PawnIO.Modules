@@ -103,8 +103,13 @@ new is_mec = false;
 
 new ec_command_proto;
 
-Void:mec_transfer(address, bytes, write, data[]) {
+Void:mec_transfer(address, data_size, write, data[]) {
     new pos = 0;
+
+    if (data_size < 4) {
+        int3();
+        return;
+    }
 
     /* Unaligned start address */
     if (address % 4 > 0) {
@@ -120,9 +125,9 @@ Void:mec_transfer(address, bytes, write, data[]) {
     }
 
     /* Aligned addresses */
-    if (bytes - pos >= 4) {
+    if (data_size - pos >= 4) {
         io_out_word(MEC_EMI_EC_ADDRESS_B0, (address & 0xFFFC) | MEC_ACCESS_TYPE_LONG_AUTOINCREMENT);
-        while (bytes - pos >= 4) {
+        while (data_size - pos >= 4) {
             for (new i = 0; i < 4; i++) {
                 if (write) {
                     io_out_byte(MEC_EMI_EC_DATA_B0 + i, data[pos++]);
@@ -135,9 +140,9 @@ Void:mec_transfer(address, bytes, write, data[]) {
     }
 
     /* Unaligned end address */
-    if (bytes - pos > 0) {
+    if (data_size - pos > 0) {
         io_out_word(MEC_EMI_EC_ADDRESS_B0, (address & 0xFFFC) | MEC_ACCESS_TYPE_BYTE);
-        for (new i = 0; i < (bytes - pos); i++) {
+        for (new i = 0; i < (data_size - pos); i++) {
             if (write) {
                 io_out_byte(MEC_EMI_EC_DATA_B0 + i, data[pos + i]);
             } else {
@@ -147,11 +152,11 @@ Void:mec_transfer(address, bytes, write, data[]) {
     }
 }
 
-Void:ec_transfer(address, bytes, write, data[]) {
+Void:ec_transfer(address, data_size, write, data[]) {
     if (is_mec) {
-        mec_transfer(address, bytes, write, data);
+        mec_transfer(address, data_size, write, data);
     } else {
-        for (new i = 0; i < bytes; i++) {
+        for (new i = 0; i < data_size; i++) {
             if (write) {
                 io_out_byte(EC_LPC_ADDR_HOST_PACKET + address + i, data[i]);
             } else {
@@ -188,7 +193,7 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
         return STATUS_BUFFER_TOO_SMALL;
 
     // struct_version, checksum, command (16bit), command_version, reserved, data_len (16bit)
-    new request[8] = [];
+    new request[rq_size] = [];
     request[0] = EC_HOST_REQUEST_VERSION;
     request[1] = csum;
     request[2] = command & 0xff;

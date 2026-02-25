@@ -79,7 +79,7 @@ new smbus_index = 0;
 
 NTSTATUS:intel_imc_init()
 {
-    new NTSTATUS:status;
+    new NTSTATUS:status = STATUS_SUCCESS;
 
     pci_address = pci_addresses[0];
 
@@ -88,28 +88,28 @@ NTSTATUS:intel_imc_init()
     new dat = 0;
 
     status = pci_config_read_dword(pci_address[0], pci_address[1], pci_address[2], CMD_REG, cmd);
-    if (status != STATUS_SUCCESS)
+    if (!NT_SUCCESS(status))
         return status;
 
     status = pci_config_read_dword(pci_address[0], pci_address[1], pci_address[2], STS_REG, sts);
-    if (status != STATUS_SUCCESS)
+    if (!NT_SUCCESS(status))
         return status;
 
     status = pci_config_read_dword(pci_address[0], pci_address[1], pci_address[2], DAT_REG, dat);
-    if (status != STATUS_SUCCESS)
+    if (!NT_SUCCESS(status))
         return status;
 
     return status;
 }
 
-int:CheckElapsed(int:start)
+CheckElapsed(start)
 {
-    return int:(get_tick_count()) - start;
+    return (get_tick_count()) - start;
 }
 
 bool:WaitReady()
 {
-    new int:start = int:(get_tick_count());
+    new start = get_tick_count();
 
     while (true)
     {
@@ -121,7 +121,7 @@ bool:WaitReady()
             return true;
         }
 
-        if (CheckElapsed(start) > int:(POLL_TIMEOUT_MS))
+        if (CheckElapsed(start) > POLL_TIMEOUT_MS)
         {
             return false;
         }
@@ -132,7 +132,7 @@ bool:WaitReady()
 
 bool:WaitDone()
 {
-    new int:start = int:(get_tick_count());
+    new start = get_tick_count();
 
     while (true)
     {
@@ -149,7 +149,7 @@ bool:WaitDone()
             return true;
         }
 
-        if (CheckElapsed(start) > int:(POLL_TIMEOUT_MS))
+        if (CheckElapsed(start) > POLL_TIMEOUT_MS)
         {
             return false;
         }
@@ -166,15 +166,12 @@ bool:WaitDone()
 ///
 /// @param in [0] = Address/Offset, [1] = Read(1)/Write(0), [2] = Command (Opcode & Slot), [3] = Protocol
 /// @param in_size Must be 4
-/// @param out [0]
-/// @param out_size Must be at least 1
+/// @param out [0] = Data
+/// @param out_size Must be 1
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-DEFINE_IOCTL(ioctl_smbus_xfer)
+DEFINE_IOCTL_SIZED(ioctl_smbus_xfer, 4, 1)
 {
-    if (in_size < 4)
-        return STATUS_BUFFER_TOO_SMALL;
-
     new offset = in[0];
     new read_write = in[1];
     new command = in[2];

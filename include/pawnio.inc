@@ -23,8 +23,8 @@
 /// Define an IOCTL function.
 /// @param %1 Name of the IOCTL function, must start with ioctl_
 #define DEFINE_IOCTL(%1) \
-    forward NTSTATUS:%1(in[], in_size, out[], out_size); \
-    public NTSTATUS:%1(in[], in_size, out[], out_size)
+    forward NTSTATUS:%1(in[0x1FFFFFFF], in_size, out[0x1FFFFFFF], out_size); \
+    public NTSTATUS:%1(in[0x1FFFFFFF], in_size, out[0x1FFFFFFF], out_size)
 
 /// Define an IOCTL function with static buffer sizes.
 /// @param %1 Name of the IOCTL function, must start with ioctl_

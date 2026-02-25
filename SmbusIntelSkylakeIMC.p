@@ -343,7 +343,7 @@ DEFINE_IOCTL_SIZED(ioctl_identity, 0, 3)
 /// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_smbus_index, 1, 0)
 {
-    smbus_index = in[0];
+    smbus_index = in[0] & 0x1;
 
     debug_print(''Set SMBus-index to %d\n'', smbus_index);
 

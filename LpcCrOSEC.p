@@ -106,22 +106,18 @@ new ec_command_proto;
 Void:mec_transfer(address, data_size, write, data[]) {
     new pos = 0;
 
-    if (data_size < 4) {
-        int3();
-        return;
-    }
-
     /* Unaligned start address */
-    if (address % 4 > 0) {
+    new unaligned_offset = address % 4;
+    if (unaligned_offset > 0) {
         io_out_word(MEC_EMI_EC_ADDRESS_B0, (address & 0xFFFC) | MEC_ACCESS_TYPE_BYTE);
-        for (new i = address % 4; i < 4; i++) {
+        for (new i = unaligned_offset; i < min(unaligned_offset + data_size, 4); i++) {
             if (write) {
                 io_out_byte(MEC_EMI_EC_DATA_B0 + i, data[pos++]);
             } else {
                 data[pos++] = io_in_byte(MEC_EMI_EC_DATA_B0 + i);
             }
         }
-        address = (address + 4) & 0xFFFC;
+        address += pos;
     }
 
     /* Aligned addresses */
@@ -343,7 +339,7 @@ NTSTATUS:comm_init_lpc() {
     new version;
     if (is_mec) {
         io_out_word(MEC_EMI_EC_ADDRESS_B0, ((memmap_addr + EC_MEMMAP_HOST_CMD_FLAGS) & 0xFFFC) | MEC_ACCESS_TYPE_BYTE);
-        version = io_in_byte(MEC_EMI_EC_DATA_B0 + (EC_MEMMAP_HOST_CMD_FLAGS % 4))
+        version = io_in_byte(MEC_EMI_EC_DATA_B0 + (EC_MEMMAP_HOST_CMD_FLAGS % 4));
     } else {
         version = io_in_byte(memmap_addr + EC_MEMMAP_HOST_CMD_FLAGS);
     }

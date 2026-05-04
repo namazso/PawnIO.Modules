@@ -21,50 +21,28 @@
 
 // PawnIO Intel Client IMC Clock Driver
 //
-// This module reads the integrated memory controller (IMC) clock ratio that
-// firmware programs during memory training on Intel client SoCs. The intent
-// is to give monitoring tools a safe way to compute a "Memory Clock" sensor 
-// on platforms where the legacy MSR_UNCORE_PERF_STATUS based formula no 
-// longer applies because uncore and the IMC are decoupled.
+// Reads the IMC QCLK ratio firmware programs during memory training, on
+// platforms where the legacy MSR_UNCORE_PERF_STATUS path no longer applies
+// because uncore and the IMC are decoupled.
 //
-// Two read sources are implemented and selected per CPUID model:
+// Read sources, selected per CPUID:
+//   * MEMSS_PMA_CR_BIOS_DATA @ MCHBAR + 0x13D10 - Core Ultra (MTL/ARL/LNL/PTL,
+//     experimental: NVL). Locked QCLK ratio against BCLK/3, static after MRC.
+//   * SA_PERF_STATUS @ MCHBAR + 0x5918 - ADL/RPL. Live workpoint with per-
+//     platform BCLK / BCLK*4/3 reference selector.
+//   * IMC_LIVE_GV_STATUS_ARL @ MCHBAR + 0xE448 - ARL live workpoint.
 //
-//   * MEMSS_PMA_CR_BIOS_DATA at MCHBAR + 0x13D10 - used on Core Ultra
-//     (Meteor Lake, Arrow Lake, Lunar Lake, Panther Lake). The locked Qclk
-//     ratio is referenced to BCLK/3. Static after MRC.
+// Security envelope:
+//   * Read-only (no writes to PCI cfg / MMIO / MSR / IO).
+//   * No caller-controlled physical addresses or PCI BDF.
+//   * Fixed compile-time MCHBAR offsets only.
+//   * Strict CPUID allowlist; unknown models return STATUS_NOT_SUPPORTED.
+//   * Reserved-bits and ratio-range checks reject wrong-register reads.
+//   * MCHBAR enable bit is observed, never set.
 //
-//   * SA_PERF_STATUS at MCHBAR + 0x5918 - used on Alder Lake / Raptor Lake.
-//     Live workpoint, with a per-platform reference clock bit selecting
-//     between BCLK and BCLK*4/3.
-//
-// Both registers are read-only and at fixed compile-time offsets. The
-// platform tag derived from CPUID determines which register is used; one
-// is never read on a CPU it doesn't apply to.
-//
-// Validation status: as of this revision, no allowlisted platform has had
-// real-hardware validation of the returned ratio against a reference such
-// as HWiNFO/CPU-Z DRAM Frequency. Every successful return therefore sets
-// the EXPERIMENTAL flag in out[6]. Consumers MUST treat EXPERIMENTAL as
-// "do not expose as a primary sensor by default" - either keep the sensor
-// hidden, place it behind a debug toggle, or label it preview/experimental
-// in the UI. Per-platform "validated" flags will be added (and EXPERIMENTAL
-// cleared) as validation results land.
-//
-// Design constraints, kept deliberately tight so a security review is easy:
-//
-//   * Read-only. No writes to PCI config, MMIO, MSR, or IO ports.
-//   * No user-controlled physical addresses or PCI BDF reach the kernel.
-//   * One IOCTL only. Every register read is at a compile-time constant
-//     offset against the firmware-published MCHBAR base.
-//   * Strict CPUID allowlist. Unknown models return STATUS_NOT_SUPPORTED.
-//   * Reserved bits and out-of-range ratios are rejected to avoid reporting
-//     a wrong-but-confident value if a future stepping revises the layout.
-//   * MCHBAR enable bit is observed but never modified.
-//
-// Public references used while writing this module:
-//   - Intel Core Ultra 200H/200U CFG/MEM register reference, MEMSS_PMA_CR_BIOS_DATA
-//   - Intel Core Ultra 200H/200U CFG/MEM register reference, MCHBAR base PCI 0/0/0 offset 0x48
-//   - Intel 14th-gen client CFG/MEM register reference, SA_PERF_STATUS at MCHBAR + 0x5918
+// Public references:
+//   - Intel Core Ultra 200H/200U CFG/MEM reference (MEMSS_PMA, MCHBAR @ PCI 0/0/0 0x48)
+//   - Intel 14th-gen client CFG/MEM reference (SA_PERF_STATUS @ MCHBAR + 0x5918)
 //   - Intel perfmon mapfile.csv (V1.05 PTL, V1.17 ARL, V1.21 MTL, V1.22 LNL, V1.39 ADL/RPL)
 
 // === Module ABI ===
@@ -78,6 +56,7 @@
 #define IMC_SRC_MCHBAR_MEMSS_PMA    1   // MCHBAR + 0x13D10 (MEMSS_PMA_CR_BIOS_DATA)
 #define IMC_SRC_MCHBAR_SA_PERF      2   // MCHBAR + 0x5918  (SA_PERF_STATUS)
 #define IMC_SRC_PMT_QCLK_STATUS     3   // PMBAR-based      (reserved, not used yet)
+#define IMC_SRC_MCHBAR_LIVE_GV_ARL  4   // MCHBAR + 0x5C    (ARL live SAGV workpoint)
 
 // What the ratio is multiplied with on this hardware. The consumer measures
 // BCLK separately and computes MHz with whatever BCLK it sees; returning the
@@ -94,16 +73,12 @@
 #define IMC_GEAR_4                  4
 
 // Hints to the consumer about how to interpret the ratio. Multiple bits
-// may be set. While EXPERIMENTAL is set, the value should be treated as
-// best-effort: the consumer is expected to keep the sensor hidden by
-// default or label it accordingly. Per-platform "validated" bits are
-// intentionally not part of this ABI yet; they will be introduced once
-// real-hardware validation produces a pass criterion, at which point
-// EXPERIMENTAL will be cleared on those platforms.
+// may be set. While EXPERIMENTAL is set, the value is best-effort and the
+// consumer is expected to keep the sensor hidden or labelled accordingly.
 #define IMC_FLAG_STATIC_LOCKED      (1 << 0)    // value latched after MRC, won't track SAGV
 #define IMC_FLAG_LIVE_CURRENT       (1 << 1)    // value reflects the live workpoint
 #define IMC_FLAG_EXPERIMENTAL       (1 << 2)    // best-effort, treat with care
-// Bits 3 and above are reserved for future use.
+// Bits 3 and above are reserved.
 
 // === Host bridge / MCHBAR layout ===
 // Host bridge is always at bus 0, device 0, function 0 on Intel client SoCs.
@@ -120,23 +95,37 @@
 #define MCHBAR_BASE_MASK            0x000003FFFFFE0000
 
 // === Register offsets inside MCHBAR ===
-// MEMSS_PMA_CR_BIOS_DATA: the locked Qclk ratio that firmware programs after
-// memory training. Public Intel docs cover this register on Core Ultra
-// 200H/200U; the same register layout is used on Meteor Lake (Core Ultra
-// 100), Lunar Lake (Core Ultra 200V), and Panther Lake (Core Ultra series
-// 3). All four Core Ultra families read the same way.
+// MEMSS_PMA_CR_BIOS_DATA: locked Qclk ratio firmware programs after memory
+// training. Same layout on MTL / ARL / LNL / PTL (and assumed on NVL).
 //   bits 7:0  QCLK_RATIO   - controller QCLK multiplier of BCLK/3
 //   bit 8     GEAR_TYPE    - 0 = Gear2, 1 = Gear4
 #define MEMSS_PMA_CR_BIOS_DATA      0x13D10
 
-// SA_PERF_STATUS: the older System-Agent performance status register used
-// on Alder Lake / Raptor Lake clients. Intel's Core Ultra docs warn that
-// this register's QCLK_RATIO field is "not defined properly" on Core Ultra
-// silicon and route the equivalent data through MEMSS_PMA instead, so this
-// register is only used on ADL/RPL.
+// SA_PERF_STATUS: ADL/RPL System-Agent perf status, documented encoding.
 //   bits 9:2  QCLK_RATIO     - controller QCLK multiplier of the reference
 //   bit 10    QCLK_REFERENCE - 0 = BCLK*4/3 (133.33 MHz), 1 = BCLK (100 MHz)
+// On Core Ultra Intel marks this field "not defined properly", but bits 9:2
+// empirically track the live QCLK workpoint against BCLK/3 (PTL: 18..64
+// across SAGV states, matches MEMSS_PMA scale). Bit 10 is informational on
+// Core Ultra. This module uses SA_PERF_STATUS as a live signal on MTL/LNL/
+// PTL and keeps the ADL/RPL decode path separate.
 #define SA_PERF_STATUS              0x5918
+
+// IMC_LIVE_GV_STATUS_ARL: ARL-S live workpoint register (the inherited 0x5918
+// reads zero on ARL).
+//   bits 7:0   QCLK_RATIO  - controller QCLK multiplier of BCLK/3
+//   bits 31:8  unknown     - not used
+// High-state value is `trained_max + 1` (consistent +1 PLL overshoot,
+// cross-validated DDR5-7800 vs DDR5-7000); the live IOCTL clamps to
+// MEMSS_PMA's trained max so output matches HWiNFO/CPU-Z. Mirrored at
+// 0xEC48 / 0xF448 / 0x1E448 / 0x1EC48 / 0x1F448. Discovery + cross-BIOS
+// evidence: Deploy/DETECT-ARL-LiveIMC{,-DDR7000}.md,
+// Deploy/VERIFY-ARL-LoadCorrelation.md.
+//
+// Phase 2: migrate Core Ultra live reads to Intel PMT/CTL via PCIe DVSEC.
+// PMT exposes canonical {floor, trained_max} without the +1 quirk. See
+// PR_discussion.md for the migration trigger conditions.
+#define IMC_LIVE_GV_STATUS_ARL      0xE448
 
 // Range a freshly trained QCLK ratio is expected to fall in. The lower
 // bound rejects 0/very-low values that would mean "register not populated"
@@ -147,67 +136,70 @@
 #define IMC_RATIO_MIN               16
 #define IMC_RATIO_MAX               220
 
-// Mask of reserved bits in MEMSS_PMA_CR_BIOS_DATA (bits 31:9). A nonzero
-// value here means the read returned something this module does not
-// understand - either the register layout shifted on a future stepping or
-// we are on a CPU that mapped a different register at this offset.
-#define MEMSS_PMA_RESERVED_MASK     0xFFFFFE00
+// Reserved-bits mask for MEMSS_PMA. Bits 31:9 are reserved-zero on the
+// 200H/200U layout (MTL, ARL). A nonzero value means a future-stepping
+// repurposing or wrong-register read.
+#define MEMSS_PMA_RESERVED_MASK_STRICT  0xFFFFFE00
+// PTL (0xCC: 0x1E8B0000) and LNL (0xBD: 0x1CCC0000, on-package LPDDR5x)
+// set bits in the 200H/200U-era reserved range; bits 7:0 still decode
+// correctly (cross-checked against HWiNFO + SMBIOS). NVL is treated the
+// same way until silicon validation lands.
+#define MEMSS_PMA_RESERVED_MASK_NONE    0
 
 // === Platform tags ===
-// A platform tag identifies the family of registers this module knows how
-// to interpret on a given CPU. We keep MTL/ARL/LNL/PTL distinct from each
-// other (and from ADL/RPL) so a future revision can light up per-platform
-// validated flags without affecting the others.
+// One tag per register-layout family this module decodes. Kept distinct so
+// per-platform validated flags can be flipped independently.
 #define PLAT_NONE                   0
-#define PLAT_MTL                    1   // Intel Core Ultra 100, Meteor Lake
-#define PLAT_ARL                    2   // Intel Core Ultra 200, Arrow Lake
-#define PLAT_LNL                    3   // Intel Core Ultra 200V, Lunar Lake
-#define PLAT_PTL                    4   // Intel Core Ultra series 3, Panther Lake
-#define PLAT_ADL                    5   // 12th Gen Core, Alder Lake
-#define PLAT_RPL                    6   // 13th/14th Gen Core, Raptor Lake
+#define PLAT_MTL                    1   // Core Ultra 100, Meteor Lake
+#define PLAT_ARL                    2   // Core Ultra 200, Arrow Lake
+#define PLAT_LNL                    3   // Core Ultra 200V, Lunar Lake
+#define PLAT_PTL                    4   // Core Ultra series 3, Panther Lake
+#define PLAT_ADL                    5   // 12th Gen, Alder Lake
+#define PLAT_RPL                    6   // 13th/14th Gen, Raptor Lake
+#define PLAT_NVL                    7   // Nova Lake (Family 18) - EXPERIMENTAL
 
-// Map a CPUID model byte to a platform tag. Anything not listed here is
-// rejected up front so that no MMIO is touched on unfamiliar hardware.
-//
-// Coverage is taken straight from intel-perfmon mapfile.csv:
-//   MTL: 0xAA, 0xAC, 0xB5  (V1.21)
-//   ARL: 0xC5, 0xC6        (V1.17)
-//   LNL: 0xBD              (V1.22)
-//   PTL: 0xCC, 0xD5        (V1.05, published 2026-02-26)
-//   ADL: 0x97, 0x9A, 0xBE  (V1.39)
-//   RPL: 0xB7, 0xBA, 0xBF  (V1.39, listed under /ADL/ in mapfile)
-//
-// Notably *not* included:
-//   0xCD, 0xCE - not currently mapped to any Intel platform in mapfile.csv
-//   0xCF       - mapped to Emerald Rapids (server), must not be treated as PTL
-//   ICL/TGL/RKL (0x7D/0x7E/0x8C/0x8D/0xA7) - their IMC publishing register
-//                is not yet validated for this module
-stock get_platform(model) {
-    switch (model) {
-        case 0xAA, 0xAC, 0xB5:
-            return PLAT_MTL;
-        case 0xC5, 0xC6:
-            return PLAT_ARL;
-        case 0xBD:
-            return PLAT_LNL;
-        case 0xCC, 0xD5:
-            return PLAT_PTL;
-        case 0x97, 0x9A, 0xBE:
-            return PLAT_ADL;
-        case 0xB7, 0xBA, 0xBF:
-            return PLAT_RPL;
+// Map CPUID (family, model) to a platform tag. Models per intel-perfmon
+// mapfile.csv (MTL V1.21, ARL V1.17, LNL V1.22, PTL V1.05, ADL/RPL V1.39).
+// 0xCF is Emerald Rapids (server) - intentionally excluded. 0xD7 is Bartlett
+// Lake (Raptor-Cove client core) - to be added with hardware validation.
+// NVL Family-18 mapping (0x01, 0x03) per Linux arch/x86/include/asm/intel-
+// family.h; routed as EXPERIMENTAL until silicon validation lands.
+stock get_platform(family, model) {
+    switch (family) {
+        case 0x6: {
+            switch (model) {
+                case 0xAA, 0xAC, 0xB5:
+                    return PLAT_MTL;
+                case 0xC5, 0xC6:
+                    return PLAT_ARL;
+                case 0xBD:
+                    return PLAT_LNL;
+                case 0xCC, 0xD5:
+                    return PLAT_PTL;
+                case 0x97, 0x9A, 0xBE:
+                    return PLAT_ADL;
+                case 0xB7, 0xBA, 0xBF:
+                    return PLAT_RPL;
+            }
+        }
+        case 0x12: {
+            // Nova Lake - INTEL_NOVALAKE = IFM(18, 0x01),
+            //             INTEL_NOVALAKE_L = IFM(18, 0x03).
+            switch (model) {
+                case 0x01, 0x03:
+                    return PLAT_NVL;
+            }
+        }
     }
     return PLAT_NONE;
 }
 
-// Choose which on-die register exposes the IMC ratio for a given platform.
-// All Core Ultra family members route through MEMSS_PMA_CR_BIOS_DATA;
-// Alder/Raptor Lake route through SA_PERF_STATUS. There is no fall-through
-// between the two sources: the wrong register on the wrong platform would
-// either be reserved or "not defined properly" per Intel's own docs.
+// Pick the IMC source register for a platform. Core Ultra (incl. NVL,
+// experimental) -> MEMSS_PMA. ADL/RPL -> SA_PERF_STATUS. No fall-through
+// between sources.
 stock get_platform_source(platform) {
     switch (platform) {
-        case PLAT_MTL, PLAT_ARL, PLAT_LNL, PLAT_PTL:
+        case PLAT_MTL, PLAT_ARL, PLAT_LNL, PLAT_PTL, PLAT_NVL:
             return IMC_SRC_MCHBAR_MEMSS_PMA;
         case PLAT_ADL, PLAT_RPL:
             return IMC_SRC_MCHBAR_SA_PERF;
@@ -215,9 +207,33 @@ stock get_platform_source(platform) {
     return IMC_SRC_NONE;
 }
 
-// Read the firmware-published MCHBAR base from the host bridge. We treat a
-// disabled or zero base as "not supported" rather than trying to bring it
-// up; the running OS would normally have already configured this.
+// Reserved-bits mask for MEMSS_PMA. MTL/ARL match the 200H/200U layout
+// (strict). PTL/LNL/NVL set bits in the documented reserved range, so the
+// gate is disabled and ratio-range carries the consistency burden.
+stock get_platform_pma_reserved_mask(platform) {
+    switch (platform) {
+        case PLAT_MTL, PLAT_ARL:
+            return MEMSS_PMA_RESERVED_MASK_STRICT;
+        case PLAT_PTL, PLAT_LNL, PLAT_NVL:
+            return MEMSS_PMA_RESERVED_MASK_NONE;
+    }
+    return MEMSS_PMA_RESERVED_MASK_STRICT;
+}
+
+// True when this platform's output has been cross-validated against
+// HWiNFO / CPU-Z. False -> IMC_FLAG_EXPERIMENTAL is set on every return.
+// Validation evidence per platform: Deploy/VALIDATION-{ARL,LNL,PTL}.md.
+// MTL and NVL remain unvalidated.
+stock bool:is_platform_validated(platform) {
+    switch (platform) {
+        case PLAT_ARL, PLAT_PTL, PLAT_LNL:
+            return true;
+    }
+    return false;
+}
+
+// Read the firmware-published MCHBAR base. Disabled/zero -> NOT_SUPPORTED;
+// this module never enables MCHBAR.
 stock NTSTATUS:read_mchbar_base(&base) {
     new lo = 0;
     new hi = 0;
@@ -238,9 +254,8 @@ stock NTSTATUS:read_mchbar_base(&base) {
     if ((lo & MCHBAR_ENABLE_BIT) == 0)
         return STATUS_NOT_SUPPORTED;
 
-    // Combine the two dwords. We mask each to 32 bits first so a high bit
-    // in lo can't sign-extend into hi when the cell is interpreted as
-    // signed 64-bit.
+    // Mask each dword to 32 bits before combining so a high bit in lo
+    // can't sign-extend into hi (cells are signed 64-bit).
     base = ((hi & 0xFFFFFFFF) << 32) | (lo & 0xFFFFFFFF);
     base = base & MCHBAR_BASE_MASK;
 
@@ -250,10 +265,8 @@ stock NTSTATUS:read_mchbar_base(&base) {
     return STATUS_SUCCESS;
 }
 
-// Read a single 32-bit MMIO register at MCHBAR + offset. The offset comes
-// only from compile-time constants we control, never from the IOCTL
-// caller, so the address handed to io_space_map is always pinned to a
-// register this module documents.
+// Read one 32-bit MMIO register at MCHBAR + offset. Offsets are compile-
+// time constants only, never caller-controlled.
 stock NTSTATUS:read_mchbar_dword(mchbar_base, offset, &value) {
     new VA:va = io_space_map(mchbar_base + offset, 4);
     if (va == NULL)
@@ -265,18 +278,15 @@ stock NTSTATUS:read_mchbar_dword(mchbar_base, offset, &value) {
     return status;
 }
 
-// Read MEMSS_PMA_CR_BIOS_DATA and split it into ratio + gear. We refuse
-// to report a value if any of the reserved bits Intel documents as 0 came
-// back set, or if the ratio is outside the plausible DDR5/LPDDR5 range -
-// either case usually means we are reading the wrong register.
-stock NTSTATUS:read_memss_pma(mchbar_base, &raw, &ratio, &gear) {
+// Read MEMSS_PMA and split into ratio + gear. Reserved-bits check is
+// platform-specific (skipped when reserved_mask == 0). Ratio out of the
+// DDR5/LPDDR5 range -> wrong-register/wrong-platform.
+stock NTSTATUS:read_memss_pma(mchbar_base, reserved_mask, &raw, &ratio, &gear) {
     new NTSTATUS:status = read_mchbar_dword(mchbar_base, MEMSS_PMA_CR_BIOS_DATA, raw);
     if (!NT_SUCCESS(status))
         return status;
 
-    // Reserved bits must be zero on documented platforms. If they are not,
-    // the register has either been repurposed or the read returned junk.
-    if ((raw & MEMSS_PMA_RESERVED_MASK) != 0)
+    if (reserved_mask != 0 && (raw & reserved_mask) != 0)
         return STATUS_NOT_SUPPORTED;
 
     ratio = raw & 0xFF;
@@ -288,17 +298,10 @@ stock NTSTATUS:read_memss_pma(mchbar_base, &raw, &ratio, &gear) {
     return STATUS_SUCCESS;
 }
 
-// Read SA_PERF_STATUS and split it into ratio + reference clock mode. The
-// register does not encode a gear field on ADL/RPL, so gear stays Unknown
-// and the consumer can derive Gear1/Gear2 from configured DRAM rate if it
-// needs to. The reference bit selects between BCLK and BCLK*4/3 - the
-// latter is the common configuration for DDR5 on these platforms.
-//
-// We do not validate reserved bits here because Intel's older client docs
-// describe several other fields in SA_PERF_STATUS that this module does
-// not consume; a "reserved" mask is therefore not safe to assume. Range
-// checking the ratio still catches the wrong-register / wrong-platform
-// cases without rejecting valid bits we do not interpret.
+// Read SA_PERF_STATUS on ADL/RPL (documented encoding). bit 10 picks BCLK
+// vs BCLK*4/3 as reference. No gear field. Reserved bits not validated -
+// the older client docs leave several fields here this module doesn't
+// consume; ratio range carries the consistency check.
 stock NTSTATUS:read_sa_perf_status(mchbar_base, &raw, &ratio, &refMode) {
     new NTSTATUS:status = read_mchbar_dword(mchbar_base, SA_PERF_STATUS, raw);
     if (!NT_SUCCESS(status))
@@ -313,23 +316,209 @@ stock NTSTATUS:read_sa_perf_status(mchbar_base, &raw, &ratio, &refMode) {
     return STATUS_SUCCESS;
 }
 
-/// Read Intel client IMC/QCLK clock-ratio information.
+// Read SA_PERF_STATUS on Core Ultra: live workpoint, bits 9:2 against
+// BCLK/3. bit 10 is informational on Core Ultra.
+stock NTSTATUS:read_sa_perf_status_core_ultra(mchbar_base, &raw, &ratio) {
+    new NTSTATUS:status = read_mchbar_dword(mchbar_base, SA_PERF_STATUS, raw);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    ratio = (raw >> 2) & 0xFF;
+
+    if (ratio < IMC_RATIO_MIN || ratio > IMC_RATIO_MAX)
+        return STATUS_NOT_SUPPORTED;
+
+    return STATUS_SUCCESS;
+}
+
+// Read the ARL live-workpoint register at MCHBAR + 0xE448 (bits 7:0 against
+// BCLK/3). High state is `trained_max + 1` (PLL overshoot); caller clamps
+// to MEMSS_PMA's trained max.
+stock NTSTATUS:read_arl_live_gv_status(mchbar_base, &raw, &ratio) {
+    new NTSTATUS:status = read_mchbar_dword(mchbar_base, IMC_LIVE_GV_STATUS_ARL, raw);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    ratio = raw & 0xFF;
+
+    if (ratio < IMC_RATIO_MIN || ratio > IMC_RATIO_MAX)
+        return STATUS_NOT_SUPPORTED;
+
+    return STATUS_SUCCESS;
+}
+
+// === DEBUG / VALIDATION ONLY ===
+// Bring-up diagnostic IOCTL: returns intermediate values + a step code for
+// which check tripped. Same security envelope as production IOCTLs. To be
+// removed once every allowlisted platform clears EXPERIMENTAL.
+#define IMC_DBG_OK              0
+#define IMC_DBG_FAIL_FAMILY     1
+#define IMC_DBG_FAIL_PLATFORM   2
+#define IMC_DBG_FAIL_SOURCE     3
+#define IMC_DBG_FAIL_MCHBAR_OFF 4
+#define IMC_DBG_FAIL_BASE_ZERO  5
+#define IMC_DBG_FAIL_PMA_RSVD   6
+#define IMC_DBG_FAIL_PMA_RANGE  7
+#define IMC_DBG_FAIL_SA_RANGE   8
+
+/// Diagnostic dump of the live IOCTL's intermediate values.
 ///
-/// This is the only IOCTL the module exposes. There is no generic PCI,
-/// MMIO, or MSR access. All addresses are hardcoded inside the module
-/// and gated by a strict CPUID allowlist covering Alder Lake, Raptor Lake,
-/// Meteor Lake, Arrow Lake, Lunar Lake, and Panther Lake. Older client
-/// platforms whose IMC ratio is still tied to MSR_UNCORE_PERF_STATUS
-/// remain on the existing IntelMSR module.
+/// @param in_size Must be 0
+/// @param out [0] = ABI version
+/// @param out [1] = CPUID FMS (family<<16 | model<<8 | stepping)
+/// @param out [2] = platform tag (PLAT_*)
+/// @param out [3] = source tag  (IMC_SRC_*)
+/// @param out [4] = MCHBAR low dword (raw, includes enable bit)
+/// @param out [5] = MCHBAR high dword (raw)
+/// @param out [6] = MCHBAR base after mask (0 if disabled)
+/// @param out [7] = raw MEMSS_PMA_CR_BIOS_DATA dword (0 if not read)
+/// @param out [8] = raw SA_PERF_STATUS dword         (0 if not read)
+/// @param out [9] = step that would have failed live IOCTL (IMC_DBG_*)
+/// @param out_size Must be 10
+/// @return STATUS_SUCCESS even on a "would have failed" run; the step code
+///         in out[9] tells you why.
+DEFINE_IOCTL_SIZED(ioctl_read_imc_clock_dbg, 0, 10) {
+    out[0] = IMC_CLOCK_ABI_VERSION;
+    out[1] = 0; out[2] = 0; out[3] = 0;
+    out[4] = 0; out[5] = 0; out[6] = 0;
+    out[7] = 0; out[8] = 0; out[9] = IMC_DBG_OK;
+
+    new fms = get_cpu_fms();
+    out[1] = fms;
+    new family = cpu_fms_family(fms);
+    if (family != 0x6 && family != 0x12) {
+        out[9] = IMC_DBG_FAIL_FAMILY;
+        return STATUS_SUCCESS;
+    }
+
+    new platform = get_platform(family, cpu_fms_model(fms));
+    out[2] = platform;
+    if (platform == PLAT_NONE) {
+        out[9] = IMC_DBG_FAIL_PLATFORM;
+        return STATUS_SUCCESS;
+    }
+
+    new source = get_platform_source(platform);
+    out[3] = source;
+    if (source == IMC_SRC_NONE) {
+        out[9] = IMC_DBG_FAIL_SOURCE;
+        return STATUS_SUCCESS;
+    }
+
+    new lo = 0;
+    new hi = 0;
+    pci_config_read_dword(HOSTBRIDGE_BUS, HOSTBRIDGE_DEV, HOSTBRIDGE_FUNC,
+        HOSTBRIDGE_MCHBAR_LO, lo);
+    pci_config_read_dword(HOSTBRIDGE_BUS, HOSTBRIDGE_DEV, HOSTBRIDGE_FUNC,
+        HOSTBRIDGE_MCHBAR_HI, hi);
+    out[4] = lo & 0xFFFFFFFF;
+    out[5] = hi & 0xFFFFFFFF;
+
+    if ((lo & MCHBAR_ENABLE_BIT) == 0) {
+        out[9] = IMC_DBG_FAIL_MCHBAR_OFF;
+        return STATUS_SUCCESS;
+    }
+
+    new base = ((hi & 0xFFFFFFFF) << 32) | (lo & 0xFFFFFFFF);
+    base = base & MCHBAR_BASE_MASK;
+    out[6] = base;
+    if (base == 0) {
+        out[9] = IMC_DBG_FAIL_BASE_ZERO;
+        return STATUS_SUCCESS;
+    }
+
+    new raw_pma = 0;
+    new raw_sa  = 0;
+    read_mchbar_dword(base, MEMSS_PMA_CR_BIOS_DATA, raw_pma);
+    read_mchbar_dword(base, SA_PERF_STATUS,         raw_sa);
+    out[7] = raw_pma & 0xFFFFFFFF;
+    out[8] = raw_sa  & 0xFFFFFFFF;
+
+    if (source == IMC_SRC_MCHBAR_MEMSS_PMA) {
+        new pma_mask = get_platform_pma_reserved_mask(platform);
+        if (pma_mask != 0 && (raw_pma & pma_mask) != 0) {
+            out[9] = IMC_DBG_FAIL_PMA_RSVD;
+        } else {
+            new r = raw_pma & 0xFF;
+            if (r < IMC_RATIO_MIN || r > IMC_RATIO_MAX)
+                out[9] = IMC_DBG_FAIL_PMA_RANGE;
+        }
+    } else if (source == IMC_SRC_MCHBAR_SA_PERF) {
+        new r = (raw_sa >> 2) & 0xFF;
+        if (r < IMC_RATIO_MIN || r > IMC_RATIO_MAX)
+            out[9] = IMC_DBG_FAIL_SA_RANGE;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+// === MCHBAR window dump (diagnostic) ===
+// Returns 64 dwords starting at a caller-supplied byte offset into MCHBAR.
+// Used during platform bring-up to locate new registers without rebuilding.
+// Security envelope: offset clamped to [0, 0x1FF00] and dword-aligned,
+// same CPUID allowlist as production IOCTLs, MCHBAR enable-bit checked,
+// read-only, no caller-supplied absolute address.
+#define MCHBAR_WINDOW_DWORDS    64
+#define MCHBAR_WINDOW_BYTES     (MCHBAR_WINDOW_DWORDS * 4)
+#define MCHBAR_REGION_BYTES     0x20000      // 128 kB documented MCHBAR size
+#define MCHBAR_OFFSET_MAX       (MCHBAR_REGION_BYTES - MCHBAR_WINDOW_BYTES)
+
+/// Dump a 64-dword (256-byte) window of MCHBAR.
 ///
-/// The ratio is returned together with its reference clock mode and gear
-/// so the consumer can compute a memory clock with whatever BCLK it has
-/// already measured. Doing the multiplication on the consumer side keeps
-/// this module free of floating point and of any UI semantics.
+/// @param in [0]  = byte offset into MCHBAR. Must be dword-aligned and
+///                  satisfy 0 <= offset <= 0x1FF00 so the 256-byte window
+///                  stays inside the documented 128 kB MCHBAR region.
+/// @param out [0..63] = 64 consecutive dwords starting at MCHBAR + offset.
+/// @return STATUS_SUCCESS on success.
+///         STATUS_INVALID_PARAMETER if the offset is misaligned or out of
+///         range. STATUS_NOT_SUPPORTED if the CPU is not on the allowlist
+///         or MCHBAR is firmware-disabled. Other NTSTATUS on PCI/MMIO read
+///         failure.
+DEFINE_IOCTL_SIZED(ioctl_dump_mchbar_window, 1, MCHBAR_WINDOW_DWORDS) {
+    new offset = in[0];
+    if (offset < 0 || offset > MCHBAR_OFFSET_MAX)
+        return STATUS_INVALID_PARAMETER;
+    if ((offset & 0x3) != 0)
+        return STATUS_INVALID_PARAMETER;
+
+    // Same CPUID gate as the production IOCTLs.
+    new fms = get_cpu_fms();
+    new family = cpu_fms_family(fms);
+    if (family != 0x6 && family != 0x12)
+        return STATUS_NOT_SUPPORTED;
+    new platform = get_platform(family, cpu_fms_model(fms));
+    if (platform == PLAT_NONE)
+        return STATUS_NOT_SUPPORTED;
+
+    new mchbar = 0;
+    new NTSTATUS:status = read_mchbar_base(mchbar);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    // Per-dword map/unmap. A single 256-byte mapping with va+i*4 silently
+    // aliased to the first dword on this runtime; the per-dword pattern is
+    // the proven workaround.
+    for (new i = 0; i < MCHBAR_WINDOW_DWORDS; i++) {
+        new value = 0;
+        new NTSTATUS:s = read_mchbar_dword(mchbar, offset + i * 4, value);
+        if (!NT_SUCCESS(s))
+            return s;
+        out[i] = value & 0xFFFFFFFF;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/// Read Intel client IMC/QCLK trained-max ratio.
 ///
-/// While IMC_FLAG_EXPERIMENTAL is set in out[6] the value is best-effort
-/// and the consumer must keep the resulting sensor hidden by default or
-/// label it as experimental.
+/// CPUID allowlist: ADL/RPL/MTL/ARL/LNL/PTL (and NVL, EXPERIMENTAL).
+/// Older clients with MSR_UNCORE_PERF_STATUS remain on IntelMSR.
+///
+/// Returns ratio + reference clock mode + gear so the consumer can compute
+/// memory clock with its measured BCLK; the multiplication stays on the
+/// consumer side to keep this module free of floating point and UI
+/// semantics. While IMC_FLAG_EXPERIMENTAL is set, the consumer must keep
+/// the resulting sensor hidden or labelled experimental.
 ///
 /// @param in_size Must be 0
 /// @param out [0] = ABI version (currently 1)
@@ -358,14 +547,14 @@ DEFINE_IOCTL_SIZED(ioctl_read_imc_clock, 0, 7) {
     out[5] = 0;
     out[6] = 0;
 
-    // Resolve the running CPU into a platform tag, then a register source.
-    // Anything outside the allowlist is rejected before we touch any bus
-    // or memory.
+    // Resolve CPU -> platform tag -> register source. Anything outside the
+    // allowlist is rejected before we touch any bus or memory.
     new fms = get_cpu_fms();
-    if (cpu_fms_family(fms) != 0x6)
+    new family = cpu_fms_family(fms);
+    if (family != 0x6 && family != 0x12)
         return STATUS_NOT_SUPPORTED;
 
-    new platform = get_platform(cpu_fms_model(fms));
+    new platform = get_platform(family, cpu_fms_model(fms));
     if (platform == PLAT_NONE)
         return STATUS_NOT_SUPPORTED;
 
@@ -384,7 +573,7 @@ DEFINE_IOCTL_SIZED(ioctl_read_imc_clock, 0, 7) {
     new ratio = 0;
     new gear = IMC_GEAR_UNKNOWN;
     new refMode = IMC_REF_UNKNOWN;
-    new flags = IMC_FLAG_EXPERIMENTAL;
+    new flags = is_platform_validated(platform) ? 0 : IMC_FLAG_EXPERIMENTAL;
 
     // Dispatch to the source helper that matches the platform. Each helper
     // owns the register's specific decoding and never reads the other
@@ -392,7 +581,7 @@ DEFINE_IOCTL_SIZED(ioctl_read_imc_clock, 0, 7) {
     // we forgot to update.
     switch (source) {
         case IMC_SRC_MCHBAR_MEMSS_PMA: {
-            status = read_memss_pma(mchbar, raw, ratio, gear);
+            status = read_memss_pma(mchbar, get_platform_pma_reserved_mask(platform), raw, ratio, gear);
             if (!NT_SUCCESS(status))
                 return status;
             // Core Ultra MEMSS_PMA is referenced to BCLK/3 and is the
@@ -423,6 +612,110 @@ DEFINE_IOCTL_SIZED(ioctl_read_imc_clock, 0, 7) {
     return STATUS_SUCCESS;
 }
 
+/// Read the live IMC/QCLK workpoint on Core Ultra (MTL/ARL/LNL/PTL, NVL).
+///
+/// `ioctl_read_imc_clock` returns the static trained-max ratio MEMSS_PMA
+/// holds after MRC; this IOCTL returns the LIVE ratio the controller runs
+/// at. On ADL/RPL it returns STATUS_NOT_SUPPORTED (use the static IOCTL -
+/// it is already live there via SA_PERF).
+///
+/// Source register depends on platform:
+///   * MTL/LNL/PTL/NVL: MCHBAR + 0x5918 (SA_PERF_STATUS, bits 9:2, BCLK/3)
+///   * ARL:             MCHBAR + 0xE448 (IMC_LIVE_GV_STATUS_ARL, bits 7:0,
+///                       BCLK/3, clamped to MEMSS_PMA's trained max)
+///
+/// Caller should poll at ~1 Hz; the live ratio drops well below trained
+/// max during low memory activity.
+///
+/// @param in_size Must be 0
+/// @param out [0] = ABI version (currently 1)
+/// @param out [1] = source enum (IMC_SRC_MCHBAR_SA_PERF on MTL/LNL/PTL,
+///                   IMC_SRC_MCHBAR_LIVE_GV_ARL on ARL)
+/// @param out [2] = ratio (live controller QCLK multiplier of BCLK/3)
+/// @param out [3] = reference clock mode (IMC_REF_BCLK_DIV_3)
+/// @param out [4] = gear (carried from MEMSS_PMA, since neither live
+///                   register encodes gear; 0 if MEMSS_PMA refused)
+/// @param out [5] = raw register dword the ratio was decoded from
+/// @param out [6] = flags (always sets LIVE_CURRENT; sets EXPERIMENTAL
+///                   when the running platform is not yet validated)
+/// @param out_size Must be 7
+/// @return STATUS_SUCCESS on a Core Ultra platform whose live ratio is in
+///         range. STATUS_NOT_SUPPORTED on ADL/RPL or unknown CPUs. Other
+///         NTSTATUS on PCI/MMIO read failure.
+DEFINE_IOCTL_SIZED(ioctl_read_imc_clock_live, 0, 7) {
+    out[0] = IMC_CLOCK_ABI_VERSION;
+    out[1] = IMC_SRC_NONE;
+    out[2] = 0;
+    out[3] = IMC_REF_UNKNOWN;
+    out[4] = IMC_GEAR_UNKNOWN;
+    out[5] = 0;
+    out[6] = 0;
+
+    new fms = get_cpu_fms();
+    new family = cpu_fms_family(fms);
+    if (family != 0x6 && family != 0x12)
+        return STATUS_NOT_SUPPORTED;
+
+    new platform = get_platform(family, cpu_fms_model(fms));
+    if (platform == PLAT_NONE)
+        return STATUS_NOT_SUPPORTED;
+
+    // Only Core Ultra parts use this live path. ADL/RPL get the documented
+    // ADL encoding via the existing ioctl_read_imc_clock.
+    new source = get_platform_source(platform);
+    if (source != IMC_SRC_MCHBAR_MEMSS_PMA)
+        return STATUS_NOT_SUPPORTED;
+
+    new mchbar = 0;
+    new NTSTATUS:status = read_mchbar_base(mchbar);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    // Pull gear + trained_max from MEMSS_PMA first; trained_max feeds the
+    // ARL clamp. On reserved-bits/range failure we fall back to Unknown
+    // gear and skip the clamp rather than failing the IOCTL.
+    new pma_raw = 0;
+    new pma_ratio = 0;
+    new gear = IMC_GEAR_UNKNOWN;
+    new NTSTATUS:pma_status = read_memss_pma(mchbar, get_platform_pma_reserved_mask(platform), pma_raw, pma_ratio, gear);
+    if (!NT_SUCCESS(pma_status)) {
+        gear = IMC_GEAR_UNKNOWN;
+        pma_ratio = 0;
+    }
+
+    new raw = 0;
+    new ratio = 0;
+    new live_source = IMC_SRC_NONE;
+    if (platform == PLAT_ARL) {
+        status = read_arl_live_gv_status(mchbar, raw, ratio);
+        live_source = IMC_SRC_MCHBAR_LIVE_GV_ARL;
+        // ARL clamp: high state encodes trained_max + 1 (PLL overshoot);
+        // clamp to MEMSS_PMA so output matches HWiNFO/CPU-Z. Skip if
+        // pma_ratio == 0 (MEMSS_PMA read failed) - reporting the raw +1
+        // beats silently zeroing a valid signal.
+        if (NT_SUCCESS(status) && pma_ratio > 0 && ratio > pma_ratio)
+            ratio = pma_ratio;
+    } else {
+        status = read_sa_perf_status_core_ultra(mchbar, raw, ratio);
+        live_source = IMC_SRC_MCHBAR_SA_PERF;
+    }
+    if (!NT_SUCCESS(status))
+        return status;
+
+    new live_flags = IMC_FLAG_LIVE_CURRENT;
+    if (!is_platform_validated(platform))
+        live_flags |= IMC_FLAG_EXPERIMENTAL;
+
+    out[1] = live_source;
+    out[2] = ratio;
+    out[3] = IMC_REF_BCLK_DIV_3;
+    out[4] = gear;
+    out[5] = raw & 0xFFFFFFFF;
+    out[6] = live_flags;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
@@ -430,10 +723,7 @@ NTSTATUS:main() {
     if (get_cpu_vendor() != CpuVendor_Intel)
         return STATUS_NOT_SUPPORTED;
 
-    // Intentionally do not gate on CPU model here. Returning success on
-    // any Intel x64 lets users on unsupported models still load the
-    // module and observe STATUS_NOT_SUPPORTED from the IOCTL itself,
-    // which makes "module didn't load" easy to tell apart from "this CPU
-    // is not on the allowlist".
+    // No model gate here; per-IOCTL allowlist returns STATUS_NOT_SUPPORTED
+    // so callers can distinguish "didn't load" from "model not allowlisted".
     return STATUS_SUCCESS;
 }

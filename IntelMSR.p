@@ -59,6 +59,8 @@
 #define MSR_IA32_APERF			0x000000e8
 
 #define MSR_OC_MAILBOX          0x00000150
+#define MSR_OC_MAILBOX_IF       0x00000607
+#define MSR_OC_MAILBOX_DATA     0x00000608
 
 bool:is_allowed_msr_read(msr) {
     switch (msr) {
@@ -70,7 +72,8 @@ bool:is_allowed_msr_read(msr) {
             MSR_PP0_POWER_LIMIT, MSR_PP0_ENERGY_STATUS, MSR_PP0_POLICY, MSR_PP0_PERF_STATUS,
             MSR_PP1_POWER_LIMIT, MSR_PP1_ENERGY_STATUS, MSR_PP1_POLICY,
             MSR_PLATFORM_ENERGY_STATUS, MSR_RAPL_POWER_UNIT, MSR_PLATFORM_INFO,
-            MSR_EBL_CR_POWERON, MSR_TURBO_RATIO_LIMIT, MSR_OC_MAILBOX:
+            MSR_EBL_CR_POWERON, MSR_TURBO_RATIO_LIMIT,
+            MSR_OC_MAILBOX, MSR_OC_MAILBOX_IF, MSR_OC_MAILBOX_DATA:
             return true;
         default:
             return false;
@@ -80,7 +83,7 @@ bool:is_allowed_msr_read(msr) {
 
 bool:is_allowed_msr_write(msr) {
     switch (msr) {
-        case MSR_PKG_POWER_LIMIT, MSR_OC_MAILBOX:
+        case MSR_PKG_POWER_LIMIT, MSR_OC_MAILBOX, MSR_OC_MAILBOX_IF, MSR_OC_MAILBOX_DATA:
             return true;
         default:
             return false;

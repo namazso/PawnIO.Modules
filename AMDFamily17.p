@@ -53,6 +53,13 @@
 #define MSR_AMD_CPPC_REQ            (0xC00102B3)
 #define MSR_AMD_CPPC_STATUS         (0xC00102B4)
 
+// Load-store / cache / instruction-fetch configuration (AMD PPR, family 17h-1Ah).
+// These hold the hardware prefetcher and speculation controls used for CPU tuning.
+#define MSR_LS_CFG                  (0xC0011020)
+#define MSR_IC_CFG                  (0xC0011021)
+#define MSR_DC_CFG                  (0xC0011022)
+#define MSR_LS_CFG2                 (0xC001102B)
+
 #define SMN_INDEX_OFFSET	(0x60)
 #define SMN_DATA_OFFSET		(0x64)
 
@@ -68,7 +75,8 @@ bool:is_allowed_msr_read(msr) {
              MSR_PMGT_MISC, MSR_HARDWARE_PSTATE_STATUS, MSR_CSTATE_CONFIG,
              MSR_PWR_UNIT, MSR_CORE_ENERGY_STAT, MSR_PKG_ENERGY_STAT,
              MSR_AMD_CPPC_CAP1, MSR_AMD_CPPC_ENABLE, MSR_AMD_CPPC_CAP2,
-             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS:
+             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS,
+             MSR_LS_CFG, MSR_IC_CFG, MSR_DC_CFG, MSR_LS_CFG2:
             return true;
         default:
             return false;
@@ -82,7 +90,8 @@ bool:is_allowed_msr_write(msr) {
              MSR_PSTATE_0, MSR_PSTATE_1, MSR_PSTATE_2, MSR_PSTATE_3,
              MSR_PSTATE_4, MSR_PSTATE_5, MSR_PSTATE_6, MSR_PSTATE_7,
              MSR_PMGT_MISC, MSR_CSTATE_CONFIG, MSR_AMD_CPPC_ENABLE,
-             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS:
+             MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS,
+             MSR_LS_CFG, MSR_IC_CFG, MSR_DC_CFG, MSR_LS_CFG2:
             return true;
         default:
             return false;

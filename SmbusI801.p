@@ -144,79 +144,6 @@ new pci_addresses[4][3] = [
     [0x03, 0x00, 0x4], */
 ];
 
-// Supported PCI device IDs
-// ICH4 introduces CRC and ICH5 introduces block reads
-// ICH8 introduces MMIO support, so we don't support older chips
-new pci_devices[] = [
-    // 0x2413,     // 82801AA (ICH) - 00:1f.3
-    // 0x2423,     // 82801AA (ICH)
-    // 0x2443,     // 82801BA (ICH2) - 00:1f.3
-    // 0x2483,     // 82801CA (ICH3) - 00:1f.3
-    // 0x24c3,     // 82801DB (ICH4) - 00:1f.3
-    // 0x24d3,     // 82801E (ICH5) - 00:1f.3
-    // 0x25a4,     // 6300ESB - 00:1f.3
-    // 0x266a,     // 82801F (ICH6) - 00:1f.3
-    // 0x269b,     // 6310ESB/6320ESB - 00:1f.3
-    // 0x27da,     // 82801G (ICH7) - 00:1f.3
-    0x283e,     // 82801H (ICH8) - 00:1f.3
-    0x2930,     // 82801I (ICH9) - 00:1f.3
-    0x5032,     // EP80579 (Tolapai)
-    0x3a30,     // ICH10 - 00:1f.3
-    0x3a60,     // ICH10 - 00:1f.3
-    0x3b30,     // 5/3400 Series (PCH) - 00:1f.3
-    0x1c22,     // 6 Series (PCH) - 00:1f.3
-    0x1d22,     // Patsburg (PCH) - 00:1f.3
-    // 0x1d70,     // Patsburg (PCH) IDF - 03:00.3
-    // 0x1d71,     // Patsburg (PCH) IDF - 03:00.4
-    // 0x1d72,     // Patsburg (PCH) IDF
-    0x2330,     // DH89xxCC (PCH) - 00:1f.3
-    0x1e22,     // Panther Point (PCH) - 00:1f.3
-    0x8c22,     // Lynx Point (PCH) - 00:1f.3
-    0x9c22,     // Lynx Point-LP (PCH) - 00:1f.3
-    0x1f3c,     // Avoton (SOC) - 00:1f.3
-    0x8d22,     // Wellsburg (PCH) - 00:1f.3
-    // 0x8d7d,     // Wellsburg (PCH) MS - 00:11.1
-    // 0x8d7e,     // Wellsburg (PCH) MS
-    // 0x8d7f,     // Wellsburg (PCH) MS - 00:11.3
-    0x23b0,     // Coleto Creek (PCH) - 00:1f.3
-    0x8ca2,     // Wildcat Point (PCH) - 00:1f.3
-    0x9ca2,     // Wildcat Point-LP (PCH) - 00:1f.3
-    0x0f12,     // BayTrail (SOC) - 00:1f.3
-    0x2292,     // Braswell (SOC) - 00:1f.3
-    0xa123,     // Sunrise Point-H (PCH) - 00:1f.4
-    0x9d23,     // Sunrise Point-LP (PCH) - 00:1f.4
-    0x19df,     // DNV (SOC) - 00:1f.4
-    0x1bc9,     // Emmitsburg (PCH) - 00:1f.4
-    0x5ad4,     // Broxton (SOC) - 00:1f.1
-    0xa1a3,     // Lewisburg (PCH) - 00:1f.4
-    0xa223,     // Lewisburg Supersku (PCH)
-    0xa2a3,     // Kaby Lake PCH-H (PCH) - 00:1f.4
-    0x31d4,     // Gemini Lake (SOC) - 00:1f.1
-    0xa323,     // Cannon Lake-H (PCH) - 00:1f.4
-    0x9da3,     // Cannon Lake-LP (PCH) - 00:1f.4
-    // 0x18df,     // Cedar Fork (PCH) - 00:0f.0
-    0x34a3,     // Ice Lake-LP (PCH) - 00:1f.4
-    0x38a3,     // Ice Lake-N (PCH) - 00:1f.4
-    0x02a3,     // Comet Lake (PCH) - 00:1f.4
-    0x06a3,     // Comet Lake-H (PCH) - 00:1f.4
-    0x4b23,     // Elkhart Lake (PCH) - 00:1f.4
-    0xa0a3,     // Tiger Lake-LP (PCH) - 00:1f.4
-    0x43a3,     // Tiger Lake-H (PCH) - 00:1f.4
-    0x4da3,     // Jasper Lake (SOC) - 00:1f.4
-    0xa3a3,     // Comet Lake-V (PCH) - 00:1f.4
-    0x7aa3,     // Alder Lake-S (PCH) - 00:1f.4
-    0x51a3,     // Alder Lake-P (PCH) - 00:1f.4
-    0x54a3,     // Alder Lake-M (PCH) - 00:1f.4
-    0x7a23,     // Raptor Lake-S (PCH) - 00:1f.4
-    0x7e22,     // Meteor Lake-P (SOC) - 00:1f.4
-    0xae22,     // Meteor Lake SoC-S (SOC)
-    0x7f23,     // Meteor Lake PCH-S (PCH) - 80:1f.4
-    0x5796,     // Birch Stream (SOC) - 00:1f.4
-    0x7722,     // Arrow Lake-H (SOC) - 00:1f.4
-    0xe322,     // Panther Lake-H (SOC)
-    0xe422,     // Panther Lake-P (SOC)
-];
-
 new pci_addr[3];
 new VA:i801_smba;
 new i801_io_smba = 0;
@@ -241,14 +168,9 @@ NTSTATUS:i801_init()
         status = pci_config_read_word(pci_addresses[i][0], pci_addresses[i][1], pci_addresses[i][2], 0x02, pci_config);
         if (!NT_SUCCESS(status))
             continue;
-        for (new j; j < sizeof pci_devices; j++) {
-            if (pci_config == pci_devices[j]) {
-                pci_addr = pci_addresses[i];
-                found = true;
-                break;
-            }
-        }
-
+        pci_addr = pci_addresses[i];
+        found = true;
+        break;
     }
 
     if (!found)

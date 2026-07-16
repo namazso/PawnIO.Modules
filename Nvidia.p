@@ -47,8 +47,17 @@
 #define THERMAL_HOT_SPOT_OFFSET     0x00
 #define THERMAL_HOT_SPOT_2_OFFSET   0x50
 
-NTSTATUS:get_bar0(bus, device, function, &bar0) {
-    new didvid = 0;
+// Cache one target GPU per module instance. PCI identity and BAR0 are still
+// checked on every request; the mapping is only replaced when either changes.
+new g_thermal_bdf = -1;
+new g_thermal_didvid = 0;
+new g_thermal_bar0 = 0;
+new VA:g_thermal_va = NULL;
+
+NTSTATUS:get_bar0(bus, device, function, &didvid, &bar0) {
+    didvid = 0;
+    bar0 = 0;
+
     new NTSTATUS:status = pci_config_read_dword(bus, device, function, 0, didvid);
     if (!NT_SUCCESS(status))
         return status;
@@ -116,6 +125,44 @@ NTSTATUS:check_gpu_architecture(bar0) {
     return STATUS_NOT_SUPPORTED;
 }
 
+unmap_thermal_registers() {
+    if (g_thermal_va != NULL)
+        io_space_unmap(g_thermal_va, THERMAL_MMIO_SIZE);
+
+    g_thermal_bdf = -1;
+    g_thermal_didvid = 0;
+    g_thermal_bar0 = 0;
+    g_thermal_va = NULL;
+}
+
+bool:thermal_mapping_matches(bdf, didvid, bar0) {
+    return g_thermal_va != NULL
+        && g_thermal_bdf == bdf
+        && g_thermal_didvid == didvid
+        && g_thermal_bar0 == bar0;
+}
+
+NTSTATUS:ensure_thermal_mapping(bdf, didvid, bar0) {
+    if (thermal_mapping_matches(bdf, didvid, bar0))
+        return STATUS_SUCCESS;
+
+    unmap_thermal_registers();
+
+    new NTSTATUS:status = check_gpu_architecture(bar0);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    new VA:va = io_space_map(bar0 + THERMAL_MMIO_BASE, THERMAL_MMIO_SIZE);
+    if (va == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    g_thermal_bdf = bdf;
+    g_thermal_didvid = didvid;
+    g_thermal_bar0 = bar0;
+    g_thermal_va = va;
+    return STATUS_SUCCESS;
+}
+
 /// Read NVIDIA GB20x thermal registers.
 ///
 /// @param in [0] = Bus, [1] = Device, [2] = Function
@@ -131,24 +178,26 @@ DEFINE_IOCTL_SIZED(ioctl_read_thermal_registers, 3, 2) {
     if (bus < 0 || bus > 0xFF || device < 0 || device > 0x1F || function < 0 || function > 0x07)
         return STATUS_INVALID_PARAMETER;
 
+    new bdf = (bus << 8) | (device << 3) | function;
+    new didvid = 0;
     new bar0 = 0;
-    new NTSTATUS:status = get_bar0(bus, device, function, bar0);
+    new NTSTATUS:status = get_bar0(bus, device, function, didvid, bar0);
+    if (!NT_SUCCESS(status)) {
+        if (g_thermal_bdf == bdf)
+            unmap_thermal_registers();
+        return status;
+    }
+
+    status = ensure_thermal_mapping(bdf, didvid, bar0);
     if (!NT_SUCCESS(status))
         return status;
 
-    status = check_gpu_architecture(bar0);
-    if (!NT_SUCCESS(status))
-        return status;
-
-    new VA:va = io_space_map(bar0 + THERMAL_MMIO_BASE, THERMAL_MMIO_SIZE);
-    if (va == NULL)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    status = virtual_read_dword(va + THERMAL_HOT_SPOT_OFFSET, out[0]);
+    status = virtual_read_dword(g_thermal_va + THERMAL_HOT_SPOT_OFFSET, out[0]);
     if (NT_SUCCESS(status))
-        status = virtual_read_dword(va + THERMAL_HOT_SPOT_2_OFFSET, out[1]);
+        status = virtual_read_dword(g_thermal_va + THERMAL_HOT_SPOT_2_OFFSET, out[1]);
+    if (!NT_SUCCESS(status))
+        unmap_thermal_registers();
 
-    io_space_unmap(va, THERMAL_MMIO_SIZE);
     return status;
 }
 
@@ -156,5 +205,10 @@ NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
+    return STATUS_SUCCESS;
+}
+
+public NTSTATUS:unload() {
+    unmap_thermal_registers();
     return STATUS_SUCCESS;
 }

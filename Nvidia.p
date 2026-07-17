@@ -43,9 +43,8 @@
 #define NV_PMC_BOOT_0_GB207        0x1B7
 
 #define THERMAL_MMIO_BASE          0xAD0A90
-#define THERMAL_MMIO_SIZE          0x54
-#define THERMAL_HOT_SPOT_OFFSET     0x00
-#define THERMAL_HOT_SPOT_2_OFFSET   0x50
+#define THERMAL_MMIO_SIZE          0x18
+#define THERMAL_CHANNEL_COUNT      6
 
 // Cache one target GPU per module instance. PCI identity and BAR0 are still
 // checked on every request; the mapping is only replaced when either changes.
@@ -167,10 +166,14 @@ NTSTATUS:ensure_thermal_mapping(bdf, didvid, bar0) {
 ///
 /// @param in [0] = Bus, [1] = Device, [2] = Function
 /// @param in_size Must be 3
-/// @param out Raw values for Hot Spot and Hot Spot #2
-/// @param out_size Must be 2
+/// @param out Six raw DWORDs from BAR0 + 0xAD0A90 through 0xAD0AA4.
+///            Channel 0 is the Hot Spot value displayed by HWMonitor 1.65.1;
+///            channels 1-5 are additional thermal channels. Consumers must
+///            require bit 30 and decode valid samples as
+///            (raw & 0xFFFF) / 256.0 degrees Celsius.
+/// @param out_size Must be 6
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_read_thermal_registers, 3, 2) {
+DEFINE_IOCTL_SIZED(ioctl_read_thermal_registers, 3, 6) {
     new bus = in[0];
     new device = in[1];
     new function = in[2];
@@ -192,13 +195,15 @@ DEFINE_IOCTL_SIZED(ioctl_read_thermal_registers, 3, 2) {
     if (!NT_SUCCESS(status))
         return status;
 
-    status = virtual_read_dword(g_thermal_va + THERMAL_HOT_SPOT_OFFSET, out[0]);
-    if (NT_SUCCESS(status))
-        status = virtual_read_dword(g_thermal_va + THERMAL_HOT_SPOT_2_OFFSET, out[1]);
-    if (!NT_SUCCESS(status))
-        unmap_thermal_registers();
+    for (new channel = 0; channel < THERMAL_CHANNEL_COUNT; channel++) {
+        status = virtual_read_dword(g_thermal_va + channel * 4, out[channel]);
+        if (!NT_SUCCESS(status)) {
+            unmap_thermal_registers();
+            return status;
+        }
+    }
 
-    return status;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS:main() {

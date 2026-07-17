@@ -1,4 +1,4 @@
-// PawnIO module for NVIDIA GB202 thermal registers observed in HWMonitor 1.65.
+// PawnIO module for NVIDIA GB202 thermal registers observed in HWMonitor 1.65.1.
 // Copyright (C) 2026 Gonzalo Duque de Blas (@GDuqueB)
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
@@ -14,11 +14,11 @@
 #define PCI_BAR_MEM_TYPE_64BIT     0x04
 #define PCI_BAR_MEM_ADDR_MASK      0xFFFFFFF0
 
-// Both registers fit in this single 4 KiB page of BAR0.
+// All six thermal channels fit in this single 4 KiB page of BAR0.
 #define THERMAL_PAGE_OFFSET        0x00AD0000
 #define THERMAL_PAGE_SIZE          0x1000
-#define HOTSPOT_PAGE_OFFSET        0x0A90
-#define HOTSPOT_2_PAGE_OFFSET      0x0AE0
+#define THERMAL_CHANNELS_OFFSET    0x0A90
+#define THERMAL_CHANNEL_COUNT      6
 
 new VA:g_thermal_page_va = NULL;
 new g_pci_bdf = 0;
@@ -93,36 +93,33 @@ DEFINE_IOCTL_SIZED(ioctl_init, 1, 0) {
     return nvidia_thermal_init(bus, device, function);
 }
 
-/// Read the two read-only thermal registers used by HWMonitor 1.65 on GB202.
+/// Read the six contiguous thermal channels used by HWMonitor 1.65.1 on GB202.
+///
+/// HWMonitor 1.65.1 treats bit 30 as the validity flag and decodes a valid
+/// sample as (raw & 0xFFFF) / 256.0 degrees Celsius. Decoding remains the
+/// responsibility of the user-mode consumer; this module only returns raw data.
 ///
 /// @param in Unused
 /// @param in_size Must be 0
-/// @param out [0] = raw DWORD at BAR0 + 0x00AD0A90 (Hot Spot)
-///            [1] = raw DWORD at BAR0 + 0x00AD0AE0 (HotSpot #2)
-/// @param out_size Must be 2
+/// @param out Raw DWORDs from BAR0 + 0x00AD0A90 through 0x00AD0AA4.
+///            Channel 0 at 0x00AD0A90 is the Hot Spot value displayed by
+///            HWMonitor 1.65.1; channels 1-5 are additional thermal channels.
+/// @param out_size Must be 6
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_read_thermal, 0, 2) {
+DEFINE_IOCTL_SIZED(ioctl_read_thermal, 0, 6) {
     if (g_thermal_page_va == NULL)
         return STATUS_DEVICE_NOT_READY;
 
-    new hotspot = 0;
-    new hotspot_2 = 0;
-    new NTSTATUS:status = virtual_read_dword(
-        g_thermal_page_va + HOTSPOT_PAGE_OFFSET,
-        hotspot
-    );
-    if (!NT_SUCCESS(status))
-        return status;
-
-    status = virtual_read_dword(
-        g_thermal_page_va + HOTSPOT_2_PAGE_OFFSET,
-        hotspot_2
-    );
-    if (!NT_SUCCESS(status))
-        return status;
-
-    out[0] = hotspot;
-    out[1] = hotspot_2;
+    for (new channel = 0; channel < THERMAL_CHANNEL_COUNT; channel++) {
+        new raw = 0;
+        new NTSTATUS:status = virtual_read_dword(
+            g_thermal_page_va + THERMAL_CHANNELS_OFFSET + channel * 4,
+            raw
+        );
+        if (!NT_SUCCESS(status))
+            return status;
+        out[channel] = raw;
+    }
     return STATUS_SUCCESS;
 }
 

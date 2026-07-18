@@ -43,13 +43,10 @@
 
 #define LEGACY_TEMP_OFFSET              0x00
 #define LEGACY_TEMP_MAP_SIZE            0x100
-#define LEGACY_TEMP_MASK                0x1FF
 
 #define MODERN_PWRM_BASE                0xFE000000
 #define MODERN_TEMP_OFFSET              0x1560
 #define MODERN_TEMP_MAP_SIZE            0x2000
-#define MODERN_TEMP_VALID               0x200
-#define MODERN_TEMP_MASK                0x1FF
 
 #define PCH_THERMAL_ROUTE_NONE          0
 #define PCH_THERMAL_ROUTE_PCI_BAR0      1
@@ -124,19 +121,6 @@ NTSTATUS:map_fixed_pwrm() {
     if (mmio_va == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    new raw = 0;
-    status = virtual_read_dword(mmio_va + MODERN_TEMP_OFFSET, raw);
-    if (!NT_SUCCESS(status)) {
-        io_space_unmap(mmio_va, MODERN_TEMP_MAP_SIZE);
-        return status;
-    }
-
-    new temperature = raw & MODERN_TEMP_MASK;
-    if (!(raw & MODERN_TEMP_VALID) || temperature == 0 || temperature == MODERN_TEMP_MASK) {
-        io_space_unmap(mmio_va, MODERN_TEMP_MAP_SIZE);
-        return STATUS_DEVICE_NOT_READY;
-    }
-
     g_route = PCH_THERMAL_ROUTE_FIXED_PWRM;
     g_didvid = didvid;
     g_pci_address = pci_address;
@@ -181,19 +165,6 @@ NTSTATUS:map_legacy_thermal_bar() {
     if (mmio_va == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    new raw = 0;
-    status = virtual_read_word(mmio_va + LEGACY_TEMP_OFFSET, raw);
-    if (!NT_SUCCESS(status)) {
-        io_space_unmap(mmio_va, LEGACY_TEMP_MAP_SIZE);
-        return status;
-    }
-
-    new temperature = raw & LEGACY_TEMP_MASK;
-    if (temperature == 0 || temperature == LEGACY_TEMP_MASK) {
-        io_space_unmap(mmio_va, LEGACY_TEMP_MAP_SIZE);
-        return STATUS_DEVICE_NOT_READY;
-    }
-
     g_route = PCH_THERMAL_ROUTE_PCI_BAR0;
     g_didvid = didvid;
     g_pci_address = pci_address;
@@ -203,52 +174,38 @@ NTSTATUS:map_legacy_thermal_bar() {
     return STATUS_SUCCESS;
 }
 
-/// Read the current PCH temperature.
+/// Read the current raw PCH temperature register.
 ///
 /// @param in Unused
 /// @param in_size Must be 0
-/// @param out [0] = temperature in milli-degrees Celsius
-///            [1] = raw temperature register
-///            [2] = route (1 = PCI thermal BAR0, 2 = fixed PWRM window)
-///            [3] = (device ID << 16) | vendor ID
-///            [4] = (bus << 16) | (device << 8) | function
-/// @param out_size Must be 5
+/// @param out [0] = raw temperature register
+///            [1] = route (1 = PCI thermal BAR0, 2 = fixed PWRM window)
+/// @param out_size Must be 2
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_read_temperature, 0, 5) {
+/// @note Consumers must validate and convert the raw value for the returned route.
+DEFINE_IOCTL_SIZED(ioctl_read_raw, 0, 2) {
     if (g_mmio_va == NULL || g_route == PCH_THERMAL_ROUTE_NONE)
         return STATUS_DEVICE_NOT_READY;
 
     new raw = 0;
-    new temperature_millidegrees = 0;
     new NTSTATUS:status;
 
     if (g_route == PCH_THERMAL_ROUTE_FIXED_PWRM) {
         status = virtual_read_dword(g_mmio_va + MODERN_TEMP_OFFSET, raw);
         if (!NT_SUCCESS(status))
             return status;
-        new temperature = raw & MODERN_TEMP_MASK;
-        if (!(raw & MODERN_TEMP_VALID) || temperature == 0 || temperature == MODERN_TEMP_MASK)
-            return STATUS_DEVICE_NOT_READY;
-        temperature_millidegrees = temperature * 1000;
     }
     else if (g_route == PCH_THERMAL_ROUTE_PCI_BAR0) {
         status = virtual_read_word(g_mmio_va + LEGACY_TEMP_OFFSET, raw);
         if (!NT_SUCCESS(status))
             return status;
-        new temperature = raw & LEGACY_TEMP_MASK;
-        if (temperature == 0 || temperature == LEGACY_TEMP_MASK)
-            return STATUS_DEVICE_NOT_READY;
-        temperature_millidegrees = temperature * 500 - 50000;
     }
     else {
         return STATUS_NOT_SUPPORTED;
     }
 
-    out[0] = temperature_millidegrees;
-    out[1] = raw;
-    out[2] = g_route;
-    out[3] = g_didvid;
-    out[4] = g_pci_address;
+    out[0] = raw;
+    out[1] = g_route;
     return STATUS_SUCCESS;
 }
 

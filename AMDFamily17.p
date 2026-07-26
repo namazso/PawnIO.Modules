@@ -21,8 +21,30 @@
 
 #define MSR_AMD64_PATCH_LEVEL       (0x0000008B)
 
+#define MSR_MCG_CAP                 (0x00000179)
+#define MSR_MCG_STATUS              (0x0000017A)
+#define MSR_MCG_CTL                 (0x0000017B)
+
 #define MSR_MPERF_RO                (0xC00000E7)
 #define MSR_APERF_RO                (0xC00000E8)
+
+#define MSR_AMD64_SMCA_BASE         (0xC0002000)
+#define MSR_AMD64_SMCA_END          (0xC00023FF)
+#define SMCA_REGS_PER_BANK          (0x10)
+#define SMCA_BANK_COUNT_MASK        (0xFF)
+
+#define SMCA_CTL_OFFSET             (0x00)
+#define SMCA_STATUS_OFFSET          (0x01)
+#define SMCA_ADDR_OFFSET            (0x02)
+#define SMCA_MISC0_OFFSET           (0x03)
+#define SMCA_CONFIG_OFFSET          (0x04)
+#define SMCA_IPID_OFFSET            (0x05)
+#define SMCA_SYND_OFFSET            (0x06)
+#define SMCA_DESTAT_OFFSET          (0x08)
+#define SMCA_DEADDR_OFFSET          (0x09)
+#define SMCA_MISC1_OFFSET           (0x0A)
+#define SMCA_SYND1_OFFSET           (0x0E)
+#define SMCA_SYND2_OFFSET           (0x0F)
 
 #define MSR_K7_EVNTSEL0             (0xC0010000)
 #define MSR_K7_PERFCTR0             (0xC0010004)
@@ -64,8 +86,30 @@
 #define SMN_DATA_OFFSET		(0x64)
 
 bool:is_allowed_msr_read(msr) {
+    // SMCA dedicates sixteen MSRs to each bank. Restrict access to the
+    // architected diagnostic registers of banks reported by MCG_CAP.
+    if (msr >= MSR_AMD64_SMCA_BASE && msr <= MSR_AMD64_SMCA_END) {
+        new mcg_cap = 0;
+        if (!NT_SUCCESS(msr_read(MSR_MCG_CAP, mcg_cap)))
+            return false;
+
+        new bank = (msr - MSR_AMD64_SMCA_BASE) / SMCA_REGS_PER_BANK;
+        if (bank >= (mcg_cap & SMCA_BANK_COUNT_MASK))
+            return false;
+
+        switch (msr & (SMCA_REGS_PER_BANK - 1)) {
+            case SMCA_CTL_OFFSET, SMCA_STATUS_OFFSET, SMCA_ADDR_OFFSET,
+                 SMCA_MISC0_OFFSET, SMCA_CONFIG_OFFSET, SMCA_IPID_OFFSET,
+                 SMCA_SYND_OFFSET, SMCA_DESTAT_OFFSET, SMCA_DEADDR_OFFSET,
+                 SMCA_MISC1_OFFSET, SMCA_SYND1_OFFSET, SMCA_SYND2_OFFSET:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     switch (msr) {
-        case MSR_AMD64_PATCH_LEVEL,
+        case MSR_AMD64_PATCH_LEVEL, MSR_MCG_CAP, MSR_MCG_STATUS, MSR_MCG_CTL,
              MSR_MPERF_RO, MSR_APERF_RO,
              MSR_K7_EVNTSEL0, MSR_K7_PERFCTR0, MSR_K7_HWCR,
              MSR_PSTATE_CURRENT_LIMIT, MSR_PSTATE_STATUS,

@@ -145,6 +145,8 @@ CodeName:get_code_name(family, model, pkg_type) {
             return CPU_Phoenix2;
         case 0x197C:
             return CPU_HawkPoint;
+        case 0x19A0:
+            return CPU_Bergamo;
         // Family 1Ah
         case 0x1A02:
             return CPU_Turin;
@@ -162,8 +164,6 @@ CodeName:get_code_name(family, model, pkg_type) {
             return CPU_KrackanPoint2;
         case 0x1A70:
             return CPU_StrixHalo;
-        case 0x1AA0:
-            return CPU_Bergamo;
         default:
             return CPU_Undefined;
     }

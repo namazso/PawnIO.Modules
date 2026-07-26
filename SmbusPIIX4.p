@@ -61,6 +61,11 @@
 #define PIIX4_WORD_DATA		0x0C
 #define PIIX4_BLOCK_DATA	0x14
 
+#define SMBHSTSTS_HOST_BUSY	0x01
+#define SMBHSTSTS_INTR		0x02
+#define SMBHSTCNT_KILL		0x02
+#define SMBHSTCNT_START		0x40
+
 #define PIIX4_ASF_PROC_CALL	0x10
 #define PIIX4_ASF_BLOCK_PROC_CALL	0x18
 
@@ -200,6 +205,34 @@ NTSTATUS:piix4_busy_check()
     return STATUS_SUCCESS;
 }
 
+piix4_kill()
+{
+    // Reset the host controller so a timed-out transaction cannot keep the
+    // bus busy after this call returns. Write KILL as the complete control
+    // value; the protocol is programmed again before the next transaction.
+    io_out_byte(SMBHSTCNT, SMBHSTCNT_KILL);
+    microsleep(1000);
+    io_out_byte(SMBHSTCNT, 0);
+
+    // Give the controller a bounded grace period to leave HOST_BUSY, then
+    // acknowledge any completion/error flags produced by the reset.
+    new deadline = get_tick_count() + MAX_TIMEOUT;
+    new temp;
+    do {
+        temp = io_in_byte(SMBHSTSTS);
+        if (!(temp & SMBHSTSTS_HOST_BUSY))
+            break;
+
+        microsleep(1000);
+    } while (get_tick_count() < deadline);
+
+    if (temp != 0x00)
+        io_out_byte(SMBHSTSTS, temp);
+
+    if (temp & SMBHSTSTS_HOST_BUSY)
+        debug_print(''Failed terminating the timed-out transaction (%x)\n'', temp);
+}
+
 NTSTATUS:piix4_transaction(size)
 {
     new NTSTATUS:status = STATUS_SUCCESS;
@@ -207,7 +240,7 @@ NTSTATUS:piix4_transaction(size)
     new timing = io_in_byte(SMBTIMING);
 
     /* start the transaction by setting bit 6 */
-    io_out_byte(SMBHSTCNT, io_in_byte(SMBHSTCNT) | 0x040);
+    io_out_byte(SMBHSTCNT, io_in_byte(SMBHSTCNT) | SMBHSTCNT_START);
 
     // Don't wait more than MAX_TIMEOUT ms for the transaction to complete
     new deadline = get_tick_count() + MAX_TIMEOUT;
@@ -221,18 +254,22 @@ NTSTATUS:piix4_transaction(size)
         // Also allows for 1 stop bit
         microsleep_short((timing * 4) / 66);
         temp = io_in_byte(SMBHSTSTS);
-    } while ((get_tick_count() < deadline) && (temp & 0x01));
+    } while ((get_tick_count() < deadline) &&
+             ((temp & (SMBHSTSTS_HOST_BUSY | SMBHSTSTS_INTR)) != SMBHSTSTS_INTR));
+
+    // A transaction is complete only when HOST_BUSY is clear and INTR is
+    // set. Abort every non-terminal timeout so callers never inherit an
+    // active command or its stale completion status.
+    if ((temp & (SMBHSTSTS_HOST_BUSY | SMBHSTSTS_INTR)) != SMBHSTSTS_INTR) {
+        debug_print(''SMBus Timeout!\n'');
+        piix4_kill();
+        return STATUS_IO_TIMEOUT;
+    }
 
     if (temp == 0x02) {
         // Reset the status flags
         io_out_byte(SMBHSTSTS, temp);
         goto check_reset;
-    }
-
-    /* If the SMBus is still busy, we give up */
-    if (temp & 0x01) {
-        debug_print(''SMBus Timeout!\n'');
-        status = STATUS_IO_TIMEOUT;
     }
 
     if (temp & 0x10) {
@@ -246,7 +283,7 @@ NTSTATUS:piix4_transaction(size)
         /* Clock stops and target is stuck in mid-transmission */
     }
 
-    if (temp & 0x04 || temp & 0x02 == 0) {
+    if (temp & 0x04) {
         status = STATUS_NO_SUCH_DEVICE;
         debug_print(''Error: no response!\n'');
     }

@@ -34,6 +34,8 @@
 #define PCI_MAX_FUNCTION                0x08
 
 #define PCI_CFG_VENDOR_DEVICE           0x00
+#define PCI_CFG_COMMAND                 0x04
+#define PCI_COMMAND_MEMORY              0x02
 #define PCI_CFG_BAR0_LOW                0x10
 #define PCI_CFG_BAR0_HIGH               0x14
 #define PCI_BAR_IO_SPACE                0x01
@@ -141,6 +143,17 @@ NTSTATUS:map_legacy_thermal_bar() {
     new function = pci_address & 0xFF;
     new base_lo = 0;
     new base_hi = 0;
+
+    // The function has to be decoding memory already. Mapping its BAR does not
+    // enable the endpoint decoder, so an otherwise valid but disabled function
+    // would map fine and then return bus fill values as successful samples.
+    new command = 0;
+    status = pci_config_read_word(
+        PCI_BUS_PCH, device, function, PCI_CFG_COMMAND, command);
+    if (!NT_SUCCESS(status))
+        return status;
+    if ((command & PCI_COMMAND_MEMORY) == 0)
+        return STATUS_NOT_SUPPORTED;
 
     status = pci_config_read_dword(
         PCI_BUS_PCH, device, function, PCI_CFG_BAR0_LOW, base_lo);

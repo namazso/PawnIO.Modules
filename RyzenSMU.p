@@ -21,9 +21,6 @@
 
 const CodeName: {
     CPU_Undefined = -1,
-    CPU_Carrizo,
-    CPU_BristolRidge,
-    CPU_StoneyRidge,
     CPU_Colfax,
     CPU_Renoir,
     CPU_Picasso,
@@ -63,6 +60,9 @@ const CodeName: {
     CPU_TurinD,
     CPU_Bergamo,
     CPU_ShimadaPeak,
+    CPU_Carrizo,
+    CPU_BristolRidge,
+    CPU_StoneyRidge,
 };
 
 const SMUStatus: {
@@ -200,9 +200,6 @@ new const k_addrinfo[][ADDRINFO] = [
 ];
 
 new const k_addridx[] = [
-    /* Carrizo       = */  4,
-    /* BristolRidge  = */  4,
-    /* StoneyRidge   = */  4,
     /* Colfax        = */  1,
     /* Renoir        = */  2,
     /* Picasso       = */  2,
@@ -242,6 +239,9 @@ new const k_addridx[] = [
     /* TurinD        = */  0,
     /* Bergamo       = */  0,
     /* ShimadaPeak   = */  3,
+    /* Carrizo       = */  4,
+    /* BristolRidge  = */  4,
+    /* StoneyRidge   = */  4,
 ];
 
 const SMU_PCI_ADDR_REG = 0xC4;

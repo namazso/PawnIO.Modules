@@ -186,15 +186,28 @@ NTSTATUS:i801_init()
     // Get SMBus memory base address
     // Bit 0 indicates memory or IO mapping (0 indicating memory mapped)
     status = pci_config_read_qword(pci_addr[0], pci_addr[1], pci_addr[2], SMBMBAR, pci_config);
-    if (!NT_SUCCESS(status) || (pci_config & 0x1) || (pci_config == 0x0))
+    if (!NT_SUCCESS(status) || (pci_config & 0x1))
         return STATUS_NOT_SUPPORTED;
 
-    // Bits 1-2 indicates address range (10b for 64-bit, otherwise 32-bit)
-    if (pci_config & 0x6 != 0b100)
+    // Bits 1-2 indicates address range (10b for 64-bit, otherwise 32-bit).
+    // Decode the width before masking: only a 64-bit BAR owns the upper dword,
+    // for a 32-bit one it belongs to whatever register follows.
+    new bar_type = pci_config & 0x6;
+    if (bar_type == 0b000)
         pci_config &= 0xffffffff;
+    else if (bar_type != 0b100)
+        // 1 MB below (01b) and reserved (11b) types aren't supported
+        return STATUS_NOT_SUPPORTED;
+
+    // An unassigned BAR reads back as nothing but its type bits, so the raw
+    // value can be nonzero while the base masks down to physical address zero.
+    // Mapping that would point every later access at low physical memory.
+    new smba_pa = pci_config & 0xffffffffffffff00;
+    if (smba_pa == 0)
+        return STATUS_NOT_SUPPORTED;
 
     // Map MMIO space
-    i801_smba = io_space_map(pci_config & 0xffffffffffffff00, SMBMBAR_SIZE);
+    i801_smba = io_space_map(smba_pa, SMBMBAR_SIZE);
     if (i801_smba == NULL) {
         debug_print(''Failed to map MMIO space\n'');
         return STATUS_IO_DEVICE_ERROR;

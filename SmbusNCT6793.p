@@ -74,6 +74,7 @@
 #define SIO_ID_MASK                 0xFFF0
 
 #define I2C_SMBUS_BLOCK_MAX         32      /* As specified in SMBus standard   */
+#define I2C_SMBUS_ADDR_MAX          0x7F    /* Addressing is 7 bit              */
 
 /* i2c_smbus_xfer read or write markers */
 #define I2C_SMBUS_READ              1
@@ -191,12 +192,58 @@ NTSTATUS:nct6793_init()
     return STATUS_SUCCESS;
 }
 
+/* Take the controller back out of manual mode, so a transfer that timed out
+   cannot be left driving the bus, and report the timeout. */
+NTSTATUS:nct6793_abort()
+{
+    io_out_byte(SMBHSTCTL, NCT6793_SOFT_RESET);
+    return STATUS_IO_TIMEOUT;
+}
+
 NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
 {
     new cnt;
     new i;
     new len;
     new timeout;
+
+    /* Validate everything that reaches the controller before touching it. The
+       soft reset below would otherwise disturb an in-flight transfer on behalf
+       of a request that is about to be rejected anyway. */
+    if(addr < 0 || addr > I2C_SMBUS_ADDR_MAX)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if(read_write != I2C_SMBUS_READ && read_write != I2C_SMBUS_WRITE)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if(command < 0 || command > 0xFF)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if(size == I2C_SMBUS_BLOCK_DATA)
+    {
+        /* Block read not supported by this driver */
+        if(read_write != I2C_SMBUS_WRITE)
+        {
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        len = GET_BYTE_LE(in, 0);
+
+        if(len == 0 || len > I2C_SMBUS_BLOCK_MAX)
+        {
+            return STATUS_INVALID_BLOCK_LENGTH;
+        }
+    }
+    else if(size != I2C_SMBUS_BYTE_DATA && size != I2C_SMBUS_WORD_DATA)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
 
     /* Perform soft reset of SMBus controller */
     io_out_byte(SMBHSTCTL, NCT6793_SOFT_RESET);
@@ -252,46 +299,32 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
                 io_out_byte(SMBHSTADD, (addr << 1) | read_write);
                 io_out_byte(SMBHSTIDX, command);
 
-                /* If write, write up to 4 bytes into SMBHSTDAT */
-                if(read_write == I2C_SMBUS_WRITE)
+                /* Write up to 4 bytes into SMBHSTDAT. The direction and the
+                   length were both checked before the reset. */
+                io_out_byte(SMBBLKSZ, len);
+
+                cnt = 1;
+                if(len >= 4)
                 {
-                    len = GET_BYTE_LE(in, 0);
-                    if(len == 0 || len > I2C_SMBUS_BLOCK_MAX)
+                    for(i = cnt; i <= 4; i++)
                     {
-                        return STATUS_INVALID_BLOCK_LENGTH;
+                        io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
                     }
 
-                    io_out_byte(SMBBLKSZ, len);
-
-                    cnt = 1;
-                    if(len >= 4)
-                    {
-                        for(i = cnt; i <= 4; i++)
-                        {
-                            io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
-                        }
-
-                        len -= 4;
-                        cnt += 4;
-                    }
-                    else
-                    {
-                        for(i = cnt; i <= len; i++)
-                        {
-                            io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
-                        }
-
-                        len = 0;
-                    }
-
-                    io_out_byte(SMBHSTCMD, NCT6793_WRITE_BLOCK);
+                    len -= 4;
+                    cnt += 4;
                 }
-
-                /* Block read not supported by this driver */
                 else
                 {
-                    return STATUS_NOT_SUPPORTED;
+                    for(i = cnt; i <= len; i++)
+                    {
+                        io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
+                    }
+
+                    len = 0;
                 }
+
+                io_out_byte(SMBHSTCMD, NCT6793_WRITE_BLOCK);
             }
         
         default:
@@ -313,7 +346,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
             {
                 if(timeout > MAX_RETRIES)
                 {
-                    return STATUS_TIMEOUT;
+                    return nct6793_abort();
                 }
 
                 microsleep_long(250);
@@ -349,7 +382,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     {
         if(timeout > MAX_RETRIES)
         {
-            return STATUS_TIMEOUT;
+            return nct6793_abort();
         }
 
         microsleep_long(250);

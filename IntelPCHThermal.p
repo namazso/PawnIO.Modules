@@ -257,6 +257,12 @@ NTSTATUS:main() {
     if (NT_SUCCESS(status))
         return STATUS_SUCCESS;
 
+    // Only the absence of a supported controller justifies the fallback. If we
+    // did find one and merely failed to map it, that is a real error and
+    // reporting it beats silently sampling a different device.
+    if (status != STATUS_NO_SUCH_DEVICE)
+        return status;
+
     return map_legacy_thermal_bar();
 }
 

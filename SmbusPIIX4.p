@@ -32,6 +32,7 @@
  * Data for SMBus Messages
  */
 #define I2C_SMBUS_BLOCK_MAX	32	/* As specified in SMBus standard */
+#define I2C_SMBUS_ADDR_MAX	0x7F	/* Addressing is 7 bit */
 
 #define SMBUS_LEN_SENTINEL (I2C_SMBUS_BLOCK_MAX + 1)
 
@@ -640,6 +641,18 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     new read_write = in[1];
     new command = in[2];
     new hstcmd = in[3];
+
+    // Validate before any PCI or controller change. Only the low bit of the
+    // direction reaches SMBHSTADD, while the rest of the driver compares the
+    // whole value against I2C_SMBUS_WRITE, so e.g. 2 would start a write and
+    // then be read back as if it were a read. The value also lands in the
+    // transfer time estimate, where a large one turns into a huge busy wait.
+    if (read_write != I2C_SMBUS_READ && read_write != I2C_SMBUS_WRITE)
+        return STATUS_INVALID_PARAMETER;
+
+    // Anything wider than 7 bits would silently alias a different slave
+    if (address < 0 || address > I2C_SMBUS_ADDR_MAX)
+        return STATUS_INVALID_PARAMETER;
 
     new pci_cmd_original;
     new pci_cmd_modified;

@@ -57,6 +57,8 @@
 #define COMMAND_PREFIX      0x20080000
 
 #define ADDR_SHIFT      8
+//Only 7 address bits fit below WRITE_OPERATION, which sits at bit 15
+#define ADDR_MAX        0x7F
 
 //Status bits
 #define STS_BUSY        0x1
@@ -240,6 +242,14 @@ NTSTATUS:ImcAccess(command, read_write, addr, hstcmd, &value)
         return STATUS_INVALID_PARAMETER;
     }
 
+    //The address field is only 7 bits wide. Bit 7 would land on bit 15 of the
+    //command, which is WRITE_OPERATION, so an out of range address would turn
+    //a read into a write to an aliased address.
+    if (addr < 0 || addr > ADDR_MAX)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
     new oldCommand = 0;
     new NTSTATUS:status = pci_config_read_dword(pci_address[0], pci_address[1], pci_address[2], CMD_REG, oldCommand);
     if (!NT_SUCCESS(status))
@@ -253,7 +263,7 @@ NTSTATUS:ImcAccess(command, read_write, addr, hstcmd, &value)
     }
 
     new cmd = COMMAND_PREFIX
-            | (addr & 0xFF) << ADDR_SHIFT
+            | (addr & ADDR_MAX) << ADDR_SHIFT
             | (command & 0xFF) ;
 
     if (hstcmd == I2C_SMBUS_BYTE)

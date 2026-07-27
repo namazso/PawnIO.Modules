@@ -93,7 +93,8 @@ DEFINE_IOCTL_SIZED(ioctl_get_thermtrip, 2, 1) {
     if ((didvid >>> 16) != MISCELLANEOUS_CONTROL_DID)
         return STATUS_NOT_SUPPORTED;
     
-    new sel_cpu = g_model < 40 ? (core_idx ? 4 : 0) : (core_idx ? 0 : 4);
+    // The core select encoding flipped with NPT, which starts at model 0x40
+    new sel_cpu = g_model < 0x40 ? (core_idx ? 4 : 0) : (core_idx ? 0 : 4);
     status = pci_config_write_dword(PCI_BUS, device, MISCELLANEOUS_CONTROL_FUNCTION, THERMTRIP_STATUS_REGISTER, sel_cpu);
     if (!NT_SUCCESS(status))
         return status;

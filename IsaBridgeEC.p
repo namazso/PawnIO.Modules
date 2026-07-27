@@ -118,6 +118,11 @@ find_superio_mmio_4e(&base, &size, &chipid) {
     }
 }
 
+// Both defined further down, but a rescan has to wind back the state set up
+// for the previous one before it can publish new values.
+forward unmap_superio_mmio();
+forward NTSTATUS:restore_config_if_needed();
+
 find_superio_mmio() {
     // Double-check to avoid transient issues.
     // The original Gigabyte code doesn't do this, but better safe than sorry.
@@ -136,17 +141,35 @@ find_superio_mmio() {
     new base_2_2 = 0, size_2_2 = 0;
     find_superio_mmio_4e(base_2_2, size_2_2, chipid_2);
 
-    g_superio_chipid = chipid_1;
-    g_superio_2_chipid = chipid_2;
-
+    // Discover into locals. Anything the two passes disagree on counts as not
+    // found, rather than silently keeping the previous scan's value next to a
+    // freshly read chip ID.
+    new new_base = 0, new_size = 0;
     if (base_1 != 0 && size_1 != 0 && base_1 == base_1_2 && size_1 == size_1_2) {
-        g_superio_size = size_1;
-        g_superio_base = base_1;
+        new_base = base_1;
+        new_size = size_1;
     }
+
+    new new_base_2 = 0, new_size_2 = 0;
     if (base_2 != 0 && size_2 != 0 && base_2 == base_2_2 && size_2 == size_2_2) {
-        g_superio_2_size = size_2;
-        g_superio_2_base = base_2;
+        new_base_2 = base_2;
+        new_size_2 = size_2;
     }
+
+    // The bridge is still programmed for the previous ranges and the mappings
+    // still point at them. Wind both back before publishing the new values, so
+    // the bridge can't end up decoding one range while the access IOCTLs go
+    // through a mapping of another.
+    restore_config_if_needed();
+    unmap_superio_mmio();
+
+    // Replace every field together, found or not
+    g_superio_base = new_base;
+    g_superio_size = new_size;
+    g_superio_chipid = chipid_1;
+    g_superio_2_base = new_base_2;
+    g_superio_2_size = new_size_2;
+    g_superio_2_chipid = chipid_2;
 }
 
 bool:have_superio_mmio() {

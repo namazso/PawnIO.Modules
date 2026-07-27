@@ -171,7 +171,19 @@ NTSTATUS:nct6793_init()
     superio_outb(sioaddr, SIO_REG_LOGDEV, NCT6793_LD_SMBUS);
 
     /* Determine base address */
-    nuvoton_nct6793_smba = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+    new smba = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+
+    /* Align it the way the Super IO decoder does, then refuse a base of zero.
+       Without this a disabled or unprogrammed logical device would aim every
+       later access at legacy ports 0x00-0x0E, which is the DMA controller. */
+    smba &= ~7;
+
+    if(smba == 0)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    nuvoton_nct6793_smba = smba;
 
     /* Read initial clock setting */
     smbus_clock = (io_in_byte(SMBHSTCLK) & 0xF);

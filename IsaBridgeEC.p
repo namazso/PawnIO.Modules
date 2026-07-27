@@ -378,7 +378,10 @@ amd_config_make_mask(out_mask[AmdConfig], slot, mmio_base, bool:enabled) {
         out_mask.ROMAddressRange2 = 0xFFFFFFFF00000000;
         return;
     }
-    out_mask.IoMemPortDecodeEnable = DecodeEnableBit;
+    // Keep every other bit of D14F3x48 and only force the decode enable on.
+    // A bare DecodeEnableBit would leave the keep-mask (the high half) zero,
+    // wiping the unrelated SIO, RTC, wide IO and legacy decode enables.
+    out_mask.IoMemPortDecodeEnable = ((~DecodeEnableBit) << 32) | DecodeEnableBit;
     if (slot == 0) {
         // 2E/2F
         new pciAddressStart = (mmio_base >> 16) & 0xFF00;

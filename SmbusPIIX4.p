@@ -654,20 +654,24 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     if (address < 0 || address > I2C_SMBUS_ADDR_MAX)
         return STATUS_INVALID_PARAMETER;
 
+    new NTSTATUS:status;
     new pci_cmd_original;
-    new pci_cmd_modified;
+    new bool:pci_cmd_enabled_here = false;
 
-    pci_config_read_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original);
+    status = pci_config_read_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original);
+    if (!NT_SUCCESS(status))
+        return status;
 
     //PCI CMD IO not enabled
     if (0 == (pci_cmd_original & PCICMD_IOBIT))
     {
-        //Enable PCI CMD IO
-        pci_cmd_modified = pci_cmd_original | PCICMD_IOBIT;
-        pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_modified);
-    }
+        //Enable it for the duration of this call
+        status = pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original | PCICMD_IOBIT);
+        if (!NT_SUCCESS(status))
+            return status;
 
-    new NTSTATUS:status;
+        pci_cmd_enabled_here = true;
+    }
 
     switch (hstcmd) {
     case I2C_SMBUS_QUICK:
@@ -738,9 +742,20 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     }
 
 getout:
-    //Restore original PCI CMD, if it was modified
-    if (pci_cmd_original != pci_cmd_modified)
-        pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original);
+    //Undo only the bit we set, and only if we were the ones to set it.
+    //Re-read rather than rewriting the whole word from the entry snapshot,
+    //so an unrelated change made meanwhile isn't clobbered.
+    if (pci_cmd_enabled_here)
+    {
+        new pci_cmd_current;
+        new NTSTATUS:restore_status = pci_config_read_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_current);
+        if (NT_SUCCESS(restore_status))
+            restore_status = pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_current & ~PCICMD_IOBIT);
+
+        //Leaving decoding enabled is worth reporting even if the transfer worked
+        if (NT_SUCCESS(status) && !NT_SUCCESS(restore_status))
+            status = restore_status;
+    }
 
     return status;
 }

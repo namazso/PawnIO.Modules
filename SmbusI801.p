@@ -621,10 +621,14 @@ NTSTATUS:i801_inuse(bool:inuse)
 NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
 {
     new NTSTATUS:status, hststs, smbauxctl;
+    new bool:acquired = false;
 
     status = i801_inuse(true);
     if (!NT_SUCCESS(status))
         goto unlock;
+
+    // INUSE_STS is ours only past this point, so only now may we release it
+    acquired = true;
 
     status = i801_check_pre();
     if (!NT_SUCCESS(status))
@@ -658,7 +662,8 @@ NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
     status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
-    i801_inuse(false);
+    if (acquired)
+        i801_inuse(false);
 
     return status;
 }
@@ -666,10 +671,14 @@ unlock:
 NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
 {
     new NTSTATUS:status, hststs, smbauxctl;
+    new bool:acquired = false;
 
     status = i801_inuse(true);
     if (!NT_SUCCESS(status))
         goto unlock;
+
+    // INUSE_STS is ours only past this point, so only now may we release it
+    acquired = true;
 
     status = i801_check_pre();
     if (!NT_SUCCESS(status))
@@ -702,7 +711,8 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
     status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
-    i801_inuse(false);
+    if (acquired)
+        i801_inuse(false);
 
     return status;
 }

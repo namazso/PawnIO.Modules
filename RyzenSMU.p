@@ -695,8 +695,8 @@ DEFINE_IOCTL(ioctl_read_pm_table) {
         for (new i = 0; i < read_count_cz; ++i) {
             data_low = 0;
             data_high = 0;
-            new idx_low = i * 2;
-            new idx_high = i * 2 + 1;
+            new idx_low = i * 8;
+            new idx_high = i * 8 + 4;
             
             // 1. Read first DWORD (lo 32 QWORD)
             status = write_reg(SMU_SRBM_XGMI_PORT_IND, g_table_base + idx_low);

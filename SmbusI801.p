@@ -601,9 +601,11 @@ NTSTATUS:i801_inuse(bool:inuse)
         new deadline = get_tick_count() + MAX_TIMEOUT;
         new is_inuse;
         virtual_read_byte(SMBHSTSTS, is_inuse);
+        is_inuse &= SMBHSTSTS_INUSE_STS;
         while (is_inuse && (get_tick_count() < deadline)) {
             microsleep(250);
             virtual_read_byte(SMBHSTSTS, is_inuse);
+            is_inuse &= SMBHSTSTS_INUSE_STS;
         }
 
         if (is_inuse) {

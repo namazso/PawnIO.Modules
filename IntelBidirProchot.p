@@ -27,6 +27,7 @@
 
 new g_original_power_ctl = 0;
 new bool:g_original_saved = false;
+new bool:g_restore_on_unload = true;
 
 NTSTATUS:set_bidir_prochot_response(bool:enabled, &readback) {
     new current = 0;
@@ -115,6 +116,32 @@ DEFINE_IOCTL_SIZED(ioctl_set_bidir_prochot, 1, 2) {
     return STATUS_SUCCESS;
 }
 
+/// Disable the CPU response to external PROCHOT and keep it disabled on unload.
+///
+/// This changes only ENABLE_BIDIR_PROCHOT in MSR_POWER_CTL and verifies the
+/// result. After this succeeds, unloading the module intentionally preserves
+/// the disabled state. Firmware or a processor reset may initialize the MSR
+/// again, so callers that require this policy across boots must reapply it.
+///
+/// @param in Unused
+/// @param in_size Must be 0
+/// @param out [0] = verified response state (0 = ignore external input)
+///            [1] = verified raw MSR_POWER_CTL value
+/// @param out_size Must be 2
+/// @return An NTSTATUS
+/// @warning Disabling the response removes protection requested by other platform components.
+DEFINE_IOCTL_SIZED(ioctl_keep_bidir_off, 0, 2) {
+    new readback = 0;
+    new NTSTATUS:status = set_bidir_prochot_response(false, readback);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    g_restore_on_unload = false;
+    out[0] = (readback & ENABLE_BIDIR_PROCHOT) != 0;
+    out[1] = readback;
+    return STATUS_SUCCESS;
+}
+
 /// Restore the bi-directional PROCHOT response state saved at module load.
 ///
 /// @param in Unused
@@ -134,6 +161,7 @@ DEFINE_IOCTL_SIZED(ioctl_restore_bidir_prochot, 0, 2) {
     if (!NT_SUCCESS(status))
         return status;
 
+    g_restore_on_unload = true;
     out[0] = (readback & ENABLE_BIDIR_PROCHOT) != 0;
     out[1] = readback;
     return STATUS_SUCCESS;
@@ -156,7 +184,7 @@ NTSTATUS:main() {
 }
 
 public NTSTATUS:unload() {
-    if (!g_original_saved)
+    if (!g_original_saved || !g_restore_on_unload)
         return STATUS_SUCCESS;
 
     new readback = 0;

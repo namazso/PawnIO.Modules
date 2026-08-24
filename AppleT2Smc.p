@@ -278,8 +278,14 @@ NTSTATUS:main() {
     // driver performs the same 0xff check and the Linux port kept it.
     new probe = 0;
     new NTSTATUS:st = virtual_read_byte(g_smc_va + SMC_KEY_STATUS, probe);
-    if (!NT_SUCCESS(st) || (probe & 0xFF) == 0xFF)
+    if (!NT_SUCCESS(st)) {
+        debug_print("AppleT2Smc: status register unreadable, declining\n");
         return smc_reject();
+    }
+    if ((probe & 0xFF) == 0xFF) {
+        debug_print("AppleT2Smc: initial status is 0xff, not an SMC, declining\n");
+        return smc_reject();
+    }
 
     // Then the protocol's own gate: LDKN is the SMC key-interface version, and
     // the MMIO interface requires at least 2. This is the first access that
@@ -287,13 +293,18 @@ NTSTATUS:main() {
     new data[SMC_MAX_DATA];
     // "LDKN" packed little-endian = 'N'<<24 | 'K'<<16 | 'D'<<8 | 'L'.
     st = smc_read_op(SMC_READ_CMD, 0x4E4B444C, 1, data);
-    if (!NT_SUCCESS(st))
+    if (!NT_SUCCESS(st)) {
+        debug_print("AppleT2Smc: LDKN read failed, declining\n");
         return smc_reject();
+    }
 
-    if (data[0] < SMC_MIN_LDKN)
+    if (data[0] < SMC_MIN_LDKN) {
+        debug_print("AppleT2Smc: LDKN version %d below minimum %d, declining\n",
+                    data[0], SMC_MIN_LDKN);
         return smc_reject();
+    }
 
-    debug_print("AppleT2Smc: SMC ok, LDKN=%d", data[0]);
+    debug_print("AppleT2Smc: SMC ok, LDKN=%d\n", data[0]);
     return STATUS_SUCCESS;
 }
 

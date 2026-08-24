@@ -526,7 +526,9 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         }
     case I2C_SMBUS_PROC_CALL:
         {
-            i801_set_hstadd(addr, read_write);
+            // A process call always starts with the write phase. The
+            // controller performs the repeated-start read phase itself.
+            i801_set_hstadd(addr, I2C_SMBUS_WRITE);
             virtual_write_byte(SMBHSTDAT0, in & 0xff);
             virtual_write_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
             virtual_write_byte(SMBHSTCMD, hstcmd);
@@ -561,6 +563,52 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
     return STATUS_SUCCESS;
 }
 
+NTSTATUS:i801_i2c_block_transaction(addr, hstcmd, read_write, in[33], out[33], &hststs)
+{
+    /*
+     * ICH5 documents the address bit as write even for I2C block reads, but
+     * Lynx Point and newer require it to be read when SPD write-disable is
+     * active. This matches the Linux i2c-i801 handling of original_hstcfg.
+     */
+    i801_set_hstadd(addr, write_protection_enabled ? read_write : I2C_SMBUS_WRITE);
+
+    if (read_write == I2C_SMBUS_READ)
+        virtual_write_byte(SMBHSTDAT1, hstcmd);
+    else
+        virtual_write_byte(SMBHSTCMD, hstcmd);
+
+    new NTSTATUS:status;
+    new hstcfg;
+    new bool:restore_hstcfg = false;
+
+    if (read_write == I2C_SMBUS_WRITE) {
+        // I2C block writes require I2C timing rather than SMBus timing.
+        status = pci_config_read_byte(pci_addr[0], pci_addr[1], pci_addr[2], SMBHSTCFG, hstcfg);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        if (!(hstcfg & SMBHSTCFG_I2C_EN)) {
+            status = pci_config_write_byte(pci_addr[0], pci_addr[1], pci_addr[2], SMBHSTCFG, hstcfg | SMBHSTCFG_I2C_EN);
+            if (!NT_SUCCESS(status))
+                return status;
+
+            restore_hstcfg = true;
+        }
+    }
+
+    status = i801_i2c_blk_byte_by_byte(read_write, in, out, hststs);
+
+    if (restore_hstcfg) {
+        new NTSTATUS:restore_status = pci_config_write_byte(pci_addr[0], pci_addr[1], pci_addr[2], SMBHSTCFG, hstcfg);
+        if (!NT_SUCCESS(restore_status))
+            debug_print(''Failed to restore SMBHSTCFG after I2C block write\n'');
+        if (NT_SUCCESS(status) && !NT_SUCCESS(restore_status))
+            status = restore_status;
+    }
+
+    return status;
+}
+
 NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33], out[33], &hststs)
 {
     if (read_write == I2C_SMBUS_READ && command == I2C_SMBUS_BLOCK_DATA)
@@ -569,22 +617,16 @@ NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33],
     else if (in[0] < 1 || in[0] > I2C_SMBUS_BLOCK_MAX)
         return STATUS_INVALID_PARAMETER;
 
+    if (command == I2C_SMBUS_I2C_BLOCK_DATA)
+        return i801_i2c_block_transaction(addr, hstcmd, read_write, in, out, hststs);
+
     if (command == I2C_SMBUS_BLOCK_PROC_CALL)
         /* Needs to be flagged as write transaction */
         i801_set_hstadd(addr, I2C_SMBUS_WRITE);
     else
         i801_set_hstadd(addr, read_write);
 
-    // For I2C block reads the ICH5 datasheet (p.240) requires the offset/command
-    // byte to be written to SMBHSTDAT1 instead of SMBHSTCMD.
-    if (command == I2C_SMBUS_I2C_BLOCK_DATA && read_write == I2C_SMBUS_READ)
-        virtual_write_byte(SMBHSTDAT1, hstcmd);
-    else
-        virtual_write_byte(SMBHSTCMD, hstcmd);
-
-    // I2C block data uses byte-by-byte mode; SMBus block and proc-call use block-buffer mode.
-    if (command == I2C_SMBUS_I2C_BLOCK_DATA)
-        return i801_i2c_blk_byte_by_byte(read_write, in, out, hststs);
+    virtual_write_byte(SMBHSTCMD, hstcmd);
 
     // if (priv->features & FEATURE_BLOCK_BUFFER)
     // 	return i801_block_transaction_by_block(data, read_write, command);
@@ -816,7 +858,12 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
         return STATUS_INVALID_PARAMETER;
 
     // Anything wider than 7 bits would silently alias a different slave
-    if (address < 0 || address > I2C_SMBUS_ADDR_MAX)
+    if (address <= 0 || address > I2C_SMBUS_ADDR_MAX)
+        return STATUS_INVALID_PARAMETER;
+
+    // SMBHSTCMD and SMBHSTDAT1 are byte registers; reject values that would
+    // otherwise be silently truncated to a different command.
+    if (command < 0 || command > 0xff)
         return STATUS_INVALID_PARAMETER;
 
     new NTSTATUS:status;

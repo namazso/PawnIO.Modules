@@ -108,6 +108,11 @@ superio_enter(addr)
     io_out_byte(addr, 0x87);
 }
 
+superio_exit(addr)
+{
+    io_out_byte(addr, 0xAA);
+}
+
 superio_inb(addr, reg)
 {
     io_out_byte(addr, reg);
@@ -164,6 +169,7 @@ NTSTATUS:nct6793_init()
         
         default:
             {
+                superio_exit(sioaddr);
                 return STATUS_NOT_SUPPORTED;
             }
     }
@@ -181,10 +187,13 @@ NTSTATUS:nct6793_init()
 
     if(smba == 0)
     {
+        superio_exit(sioaddr);
         return STATUS_NOT_SUPPORTED;
     }
 
     nuvoton_nct6793_smba = smba;
+
+    superio_exit(sioaddr);
 
     /* Read initial clock setting */
     smbus_clock = (io_in_byte(SMBHSTCLK) & 0xF);

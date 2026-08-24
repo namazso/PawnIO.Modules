@@ -210,7 +210,9 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     /* Validate everything that reaches the controller before touching it. The
        soft reset below would otherwise disturb an in-flight transfer on behalf
        of a request that is about to be rejected anyway. */
-    if(addr < 0 || addr > I2C_SMBUS_ADDR_MAX)
+    /* Address zero is the I2C General Call/broadcast address, not a
+       target SMBus device address for these byte/word/block protocols. */
+    if(addr <= 0 || addr > I2C_SMBUS_ADDR_MAX)
     {
         return STATUS_INVALID_PARAMETER;
     }

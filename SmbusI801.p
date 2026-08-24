@@ -437,10 +437,15 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
         return STATUS_NOT_SUPPORTED;
     }
 
-    /* Set block buffer mode */
-    new smbauxctl;
-    virtual_read_byte(SMBAUXCTL, smbauxctl);
-    virtual_write_byte(SMBAUXCTL, smbauxctl | SMBAUXCTL_E32B);
+    /* Set block buffer mode without disturbing pre-existing AUXCTL state. */
+    new smbauxctl_original;
+    status = virtual_read_byte(SMBAUXCTL, smbauxctl_original);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = virtual_write_byte(SMBAUXCTL, smbauxctl_original | SMBAUXCTL_E32B);
+    if (!NT_SUCCESS(status))
+        return status;
 
     if (read_write == I2C_SMBUS_WRITE) {
         len = in[0];
@@ -477,8 +482,10 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
             virtual_read_byte(SMBBLKDAT, out[i + 1]);
     }
 cleanup:
-    virtual_read_byte(SMBAUXCTL, smbauxctl);
-    virtual_write_byte(SMBAUXCTL, smbauxctl & ~SMBAUXCTL_E32B);
+    new NTSTATUS:restore_status = virtual_write_byte(SMBAUXCTL, smbauxctl_original);
+    if (NT_SUCCESS(status) && !NT_SUCCESS(restore_status))
+        status = restore_status;
+
     return status;
 }
 
@@ -641,9 +648,13 @@ NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
     if (!NT_SUCCESS(status))
         goto unlock;
 
-    status = virtual_write_byte(SMBAUXCTL, smbauxctl & (~SMBAUXCTL_CRC));
-    if (!NT_SUCCESS(status))
+    // This interface has no PEC flag or PEC result ABI. Do not silently change
+    // controller-wide automatic CRC state owned by firmware or another client.
+    if (smbauxctl & SMBAUXCTL_CRC) {
+        debug_print(''Automatic PEC is enabled; PEC transfers are unsupported\n'');
+        status = STATUS_NOT_SUPPORTED;
         goto unlock;
+    }
 
     switch (size) {
         case I2C_SMBUS_QUICK, I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
@@ -691,9 +702,13 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
     if (!NT_SUCCESS(status))
         goto unlock;
 
-    status = virtual_write_byte(SMBAUXCTL, smbauxctl & (~SMBAUXCTL_CRC));
-    if (!NT_SUCCESS(status))
+    // This interface has no PEC flag or PEC result ABI. Do not silently change
+    // controller-wide automatic CRC state owned by firmware or another client.
+    if (smbauxctl & SMBAUXCTL_CRC) {
+        debug_print(''Automatic PEC is enabled; PEC transfers are unsupported\n'');
+        status = STATUS_NOT_SUPPORTED;
         goto unlock;
+    }
 
     switch (size) {
         case I2C_SMBUS_BLOCK_DATA, I2C_SMBUS_BLOCK_PROC_CALL, I2C_SMBUS_I2C_BLOCK_DATA:

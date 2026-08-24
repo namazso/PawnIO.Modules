@@ -71,7 +71,7 @@
 #define SIO_NCT6795_ID              0xd350
 #define SIO_NCT6796_ID              0xd420
 #define SIO_NCT6798_ID              0xd428
-#define SIO_ID_MASK                 0xFFF0
+#define SIO_ID_MASK                 0xFFF8
 
 #define I2C_SMBUS_BLOCK_MAX         32      /* As specified in SMBus standard   */
 #define I2C_SMBUS_ADDR_MAX          0x7F    /* Addressing is 7 bit              */

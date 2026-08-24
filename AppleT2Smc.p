@@ -14,22 +14,30 @@
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 //
 //  On 2018-2020 Intel Macs the T2 chip intercepts the legacy SMC I/O-port
-//  protocol (0x300/0x304) and instead exposes the SMC through an MMIO window
-//  at physical 0xFE0B0000. This module maps that window and performs the SMC
-//  request/response handshake in kernel mode, exposing only SMC read / get-key
-//  / write operations — never raw physical memory access. Writes are further
-//  restricted to fan-control keys so the module can't be used to poke arbitrary
-//  SMC state.
+//  protocol (0x300/0x304) and instead exposes the SMC through an MMIO window.
+//  This module maps that window and performs the SMC request/response
+//  handshake in kernel mode, exposing only SMC read / get-key / write
+//  operations - never raw physical memory access. Writes are further
+//  restricted to fan-control keys so the module can't be used to poke
+//  arbitrary SMC state.
 //
 //  Register layout, access widths and protocol mirror the Linux T2 applesmc
 //  driver (MCMrARM/mbp2018-etc, applesmc_t2_kmod.c): control registers are
 //  written as 32-bit words, status/length/error are read as bytes, the data
 //  buffer is byte-addressed.
+//
+//  KNOWN LIMITATION: the Linux driver obtains the MMIO base from the ACPI
+//  _CRS of device APP0001. PawnIO has no ACPI access, so the base is a
+//  compile-time constant taken from the machines it has been observed on. If
+//  a T2 model places the window elsewhere, the load-time checks below fail
+//  and the module refuses to load rather than touching the wrong device.
 
 #include <pawnio.inc>
 
 #define T2_SMC_PHYS         0xFE0B0000
-#define T2_SMC_SIZE         0x10000
+// Linux defines APPLESMC_IOMEM_MIN_SIZE as 0x4006; map exactly that so no
+// unrelated MMIO beyond the status register is ever mapped.
+#define T2_SMC_SIZE         0x4006
 
 // Register offsets from the mapped base
 #define SMC_DATA            0x0000      // data buffer (byte-addressed, up to 32 bytes)
@@ -41,7 +49,7 @@
 #define SMC_DONE_BIT        0x20
 
 // GET_KEY_TYPE result layout (overlaps the data window)
-#define SMC_TYPE_CODE       0x0000      // 4-byte type code
+#define SMC_TYPE_CODE       0x0000      // 4-byte type code (dword read)
 #define SMC_TYPE_DATALEN    0x0005      // key data length
 #define SMC_TYPE_FLAGS      0x0006      // key flags
 
@@ -55,6 +63,10 @@
 #define SMC_MIN_WAIT        0x10
 #define SMC_RETRY_WAIT      0x100
 #define SMC_MAX_WAIT        0x20000
+
+// Minimum LDKN protocol version that supports the MMIO interface. Apple's own
+// driver and the Linux port both gate on this.
+#define SMC_MIN_LDKN        2
 
 new VA:g_smc_va = NULL;
 
@@ -104,17 +116,23 @@ NTSTATUS:smc_read_op(cmd, key, len, data[SMC_MAX_DATA]) {
         return STATUS_UNSUCCESSFUL;
 
     if (cmd == SMC_GET_TYPE_CMD) {
-        // Special MMIO layout: type@0..3, datalen@5, flags@6. We repack it into
-        // the 6-byte form the I/O-port path returns: [len, type0..3, flags].
-        new tlen = 0, flags = 0;
-        virtual_read_byte(g_smc_va + SMC_TYPE_DATALEN, tlen);
-        virtual_read_byte(g_smc_va + SMC_TYPE_FLAGS, flags);
+        // Special MMIO layout: type@0..3, datalen@5, flags@6. The type code is
+        // read as one dword, as the Linux driver does; splitting it into byte
+        // reads is not guaranteed to be equivalent on this window. We repack
+        // it into the 6-byte form the I/O-port path returns:
+        // [len, type0..3, flags].
+        new tlen = 0, flags = 0, tcode = 0;
+        st = virtual_read_byte(g_smc_va + SMC_TYPE_DATALEN, tlen);
+        if (!NT_SUCCESS(st)) return st;
+        st = virtual_read_dword(g_smc_va + SMC_TYPE_CODE, tcode);
+        if (!NT_SUCCESS(st)) return st;
+        st = virtual_read_byte(g_smc_va + SMC_TYPE_FLAGS, flags);
+        if (!NT_SUCCESS(st)) return st;
         data[0] = tlen & 0xFF;
-        for (new i = 0; i < 4; i++) {
-            new b = 0;
-            virtual_read_byte(g_smc_va + SMC_TYPE_CODE + i, b);
-            data[1 + i] = b & 0xFF;
-        }
+        data[1] =  tcode        & 0xFF;
+        data[2] = (tcode >> 8)  & 0xFF;
+        data[3] = (tcode >> 16) & 0xFF;
+        data[4] = (tcode >> 24) & 0xFF;
         data[5] = flags & 0xFF;
         return STATUS_SUCCESS;
     }
@@ -122,7 +140,8 @@ NTSTATUS:smc_read_op(cmd, key, len, data[SMC_MAX_DATA]) {
     if (cmd == SMC_READ_CMD) {
         // The SMC reports how many bytes the key holds; it must match the request.
         new rlen = 0;
-        virtual_read_byte(g_smc_va + SMC_KEY_DATALEN, rlen);
+        st = virtual_read_byte(g_smc_va + SMC_KEY_DATALEN, rlen);
+        if (!NT_SUCCESS(st)) return st;
         if ((rlen & 0xFF) != len)
             return STATUS_INVALID_PARAMETER;
     }
@@ -234,27 +253,47 @@ DEFINE_IOCTL_SIZED(ioctl_smc_write, 34, 0) {
     return smc_write_op(key, len, data);
 }
 
+NTSTATUS:smc_reject() {
+    io_space_unmap(g_smc_va, T2_SMC_SIZE);
+    g_smc_va = NULL;
+    return STATUS_NOT_SUPPORTED;
+}
+
 NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
+        return STATUS_NOT_SUPPORTED;
+
+    // Every T2 Mac is an Intel machine. Checking first costs nothing and
+    // narrows the set of systems on which the window below is touched at all.
+    if (get_cpu_vendor() != CpuVendor_Intel)
         return STATUS_NOT_SUPPORTED;
 
     g_smc_va = io_space_map(T2_SMC_PHYS, T2_SMC_SIZE);
     if (g_smc_va == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    // Probe the SMC: read "FNum" (fan count, 1 byte). On a real T2 SMC this
-    // succeeds; on non-Apple hardware the handshake times out or the error byte
-    // is set, so we refuse to load and never touch memory that isn't an SMC.
-    // "FNum" packed little-endian = 'm'<<24 | 'u'<<16 | 'N'<<8 | 'F'.
-    new data[SMC_MAX_DATA];
-    new NTSTATUS:st = smc_read_op(SMC_READ_CMD, 0x6D754E46, 1, data);
-    if (!NT_SUCCESS(st)) {
-        io_space_unmap(g_smc_va, T2_SMC_SIZE);
-        g_smc_va = NULL;
-        return STATUS_NOT_SUPPORTED;
-    }
+    // Read-only gate first. Nothing is written to this window until the status
+    // register has answered plausibly, so on a machine where this address
+    // belongs to some other device we map, read one byte and leave. Apple's
+    // driver performs the same 0xff check and the Linux port kept it.
+    new probe = 0;
+    new NTSTATUS:st = virtual_read_byte(g_smc_va + SMC_KEY_STATUS, probe);
+    if (!NT_SUCCESS(st) || (probe & 0xFF) == 0xFF)
+        return smc_reject();
 
-    debug_print("AppleT2Smc: SMC ok, FNum=%d", data[0]);
+    // Then the protocol's own gate: LDKN is the SMC key-interface version, and
+    // the MMIO interface requires at least 2. This is the first access that
+    // writes, and it only runs once the check above has passed.
+    new data[SMC_MAX_DATA];
+    // "LDKN" packed little-endian = 'N'<<24 | 'K'<<16 | 'D'<<8 | 'L'.
+    st = smc_read_op(SMC_READ_CMD, 0x4E4B444C, 1, data);
+    if (!NT_SUCCESS(st))
+        return smc_reject();
+
+    if (data[0] < SMC_MIN_LDKN)
+        return smc_reject();
+
+    debug_print("AppleT2Smc: SMC ok, LDKN=%d", data[0]);
     return STATUS_SUCCESS;
 }
 

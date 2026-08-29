@@ -1,5 +1,5 @@
 //  PawnIO Modules - Modules for various hardware to be used with PawnIO.
-//  Copyright (C) 2026  M-Control Contributors
+//  Copyright (C) 2026  GeniusPilot2016 
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -16,7 +16,6 @@
 //  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 //
 //  SPDX-License-Identifier: LGPL-2.1-or-later
-
 #include <pawnio.inc>
 
 // Legacy system speaker module.

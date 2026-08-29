@@ -610,10 +610,10 @@ NTSTATUS:check_smu_register_range(cmd) {
 
     // Check for range:
 
-    // 1. 0x3B10*** (0x3B10000 – 0x3B10FFF) SMU Mailboxes
+    // 1. 0x3B10*** (0x3B10000 – 0x3B10FF0) SMU Mailboxes
     if ((cmd & 0xFFFFF000) == 0x3B10000) return STATUS_SUCCESS;
 
-    // 2. 0x130000*0 (0x13000000 - 0x130000F0) SMU Mailboxes on Pre-Ryzen
+    // 2. 0x130000*0 (0x13000000 - 0x130000FF) SMU Mailboxes on Pre-Ryzen
     if (cmd >= 0x13000000 && cmd <= 0x130000F0 && is_carrizo_family(g_code_name)) return STATUS_SUCCESS;
 
     // 3. 0x56***-0x5A*** (0x56000 – 0x5AFFF) SMU SVI2 Planes
@@ -625,6 +625,9 @@ NTSTATUS:check_smu_register_range(cmd) {
     // 5. 0xxxx00*** (0xxxx00000 – 0xxxx00FFF) SMU Mmio Mailboxes on Pre-Ryzen, mapped with Mmio base
     if ((cmd & 0xFFFFF000) == SMU_MMIO_SENTINEL && is_carrizo_family(g_code_name)) return STATUS_SUCCESS;
 
+    // 6. 0xC010**** (0xC0100000 – 0xC010FFFF) SMU fuses on Pre-Ryzen
+    if ((cmd & 0xFFFF0000) == 0xC0100000 && is_carrizo_family(g_code_name)) return STATUS_SUCCESS;
+    
     // If not in expected range
     return STATUS_NOT_SUPPORTED;
 }

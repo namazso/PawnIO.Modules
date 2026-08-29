@@ -23,34 +23,34 @@
 #include <registry.inc>
 
 // Valve LEDs driver constants
-const NUM_LEDS                      = 17
-const NUM_COMPONENTS                = 3
+const NUM_LEDS                      = 17;
+const NUM_COMPONENTS                = 3;
 
-const BIOS_CTRL_ENABLE_BIT          = BIT(0)
-const BRIGHTNESS_CTRL_SCALE_BIT     = BIT(0)
-const BRIGHTNESS_CTRL_PWRBTN_BIT    = BIT(1)
+const BIOS_CTRL_ENABLE_BIT          = BIT(0);
+const BRIGHTNESS_CTRL_SCALE_BIT     = BIT(0);
+const BRIGHTNESS_CTRL_PWRBTN_BIT    = BIT(1);
 
-const PORT_EC_CMD                   = 0x6c
-const EC_CMD_COMMIT_SETTINGS        = 0xc6
+const PORT_EC_CMD                   = 0x6c;
+const EC_CMD_COMMIT_SETTINGS        = 0xc6;
 
-const PORT_BASE                     = 0xde8
-const PORT_BIOS_LED_CTRL            = (0xde8 - PORT_BASE)
-const PORT_INTENSITY_STARTUP        = (0xde9 - PORT_BASE)
-const PORT_BRIGHTNESS_STARTUP       = (0xdec - PORT_BASE)
-const PORT_STRIP_ENABLE             = (0xdef - PORT_BASE)
-const PORT_INTENSITY                = (0xe39 - PORT_BASE)
-const PORT_MODE                     = (0xe6c - PORT_BASE)
-const PORT_DELAY                    = (0xe6e - PORT_BASE)
-const PORT_BREATH_OFFSET            = (0xe6f - PORT_BASE)
-const PORT_BREATH_LEVEL             = (0xe70 - PORT_BASE)
-const PORT_PATROL_NUM               = (0xe71 - PORT_BASE)
-const PORT_COLOR_SHIFT              = (0xe75 - PORT_BASE)
-const PORT_BRIGHTNESS_CTRL          = (0xe78 - PORT_BASE)
-const PORT_BRIGHTNESS_SCALE         = (0xe79 - PORT_BASE)
-const PORT_BRIGHTNESS_PWRBTN        = (0xe7a - PORT_BASE)
-const NR_PORTS                      = (PORT_BRIGHTNESS_PWRBTN + 1)
+const PORT_BASE                     = 0xde8;
+const PORT_BIOS_LED_CTRL            = (0xde8 - PORT_BASE);
+const PORT_INTENSITY_STARTUP        = (0xde9 - PORT_BASE);
+const PORT_BRIGHTNESS_STARTUP       = (0xdec - PORT_BASE);
+const PORT_STRIP_ENABLE             = (0xdef - PORT_BASE);
+const PORT_INTENSITY                = (0xe39 - PORT_BASE);
+const PORT_MODE                     = (0xe6c - PORT_BASE);
+const PORT_DELAY                    = (0xe6e - PORT_BASE);
+const PORT_BREATH_OFFSET            = (0xe6f - PORT_BASE);
+const PORT_BREATH_LEVEL             = (0xe70 - PORT_BASE);
+const PORT_PATROL_NUM               = (0xe71 - PORT_BASE);
+const PORT_COLOR_SHIFT              = (0xe75 - PORT_BASE);
+const PORT_BRIGHTNESS_CTRL          = (0xe78 - PORT_BASE);
+const PORT_BRIGHTNESS_SCALE         = (0xe79 - PORT_BASE);
+const PORT_BRIGHTNESS_PWRBTN        = (0xe7a - PORT_BASE);
+const NR_PORTS                      = (PORT_BRIGHTNESS_PWRBTN + 1);
 
-const PORT_STRIDE                   = 3
+const PORT_STRIDE                   = 3;
 #define LED_PORT(%0)                (PORT_INTENSITY + (%0) * PORT_STRIDE)
 
 const EffectMode: {
@@ -290,7 +290,7 @@ DEFINE_IOCTL_SIZED(ioctl_get_led_components, 1, 1) {
 /// @param out_size Must be 1
 /// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_get_led_num, 0, 1) {
-    out[0] = NUM_LEDS
+    out[0] = NUM_LEDS;
     return STATUS_SUCCESS;
 }
 

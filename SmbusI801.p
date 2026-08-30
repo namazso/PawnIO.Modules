@@ -981,8 +981,6 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
             if (!NT_SUCCESS(status))
                 goto getout;
 
-            // Keep the same output ABI as SMBus and I2C block reads:
-            // one full cell for the length, followed by byte-packed data.
             out[0] = out_data[0];
             pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
         }

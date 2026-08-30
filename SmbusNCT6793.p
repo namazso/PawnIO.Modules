@@ -62,8 +62,13 @@
 
 #define SIO_REG_LDSEL               0x07    /* Logical device select            */
 #define SIO_REG_DEVID               0x20    /* Device ID (2 bytes)              */
+#define SIO_REG_ENABLE              0x30    /* Logical device enable            */
 #define SIO_REG_SMBA                0x62    /* SMBus base address register      */
 #define SIO_REG_LOGDEV              0x07    /* Logical Device Register          */
+
+#define SMBUS_IO_LAST_OFFSET        0x0E
+#define PCI_CONFIG_ADDRESS_PORT     0xCF8
+#define PCI_CONFIG_DATA_PORT_END    0xCFF
 
 #define SIO_NCT6791_ID              0xc800
 #define SIO_NCT6792_ID              0xc910
@@ -71,7 +76,7 @@
 #define SIO_NCT6795_ID              0xd350
 #define SIO_NCT6796_ID              0xd420
 #define SIO_NCT6798_ID              0xd428
-#define SIO_ID_MASK                 0xFFF0
+#define SIO_ID_MASK                 0xFFF8
 
 #define I2C_SMBUS_BLOCK_MAX         32      /* As specified in SMBus standard   */
 #define I2C_SMBUS_ADDR_MAX          0x7F    /* Addressing is 7 bit              */
@@ -171,15 +176,23 @@ NTSTATUS:nct6793_init()
     /* Enable SMBus logical device */
     superio_outb(sioaddr, SIO_REG_LOGDEV, NCT6793_LD_SMBUS);
 
+    new bool:smba_enabled = (superio_inb(sioaddr, SIO_REG_ENABLE) & BIT(0)) != 0;
+
     /* Determine base address */
     new smba = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+    new smba_verify = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+    new bool:smba_stable = smba == smba_verify;
 
-    /* Align it the way the Super IO decoder does, then refuse a base of zero.
-       Without this a disabled or unprogrammed logical device would aim every
-       later access at legacy ports 0x00-0x0E, which is the DMA controller. */
+    /* Align the base the way the Super IO decoder does, then require the full
+       controller register window to be a usable 16-bit I/O range. */
     smba &= ~7;
 
-    if(smba == 0)
+    if( !smba_enabled
+     || !smba_stable
+     || smba < 0x100
+     || smba == 0xFFF8
+     || smba > (0xFFFF - SMBUS_IO_LAST_OFFSET)
+     || (smba <= PCI_CONFIG_DATA_PORT_END && (smba + SMBUS_IO_LAST_OFFSET) >= PCI_CONFIG_ADDRESS_PORT))
     {
         return STATUS_NOT_SUPPORTED;
     }
@@ -210,7 +223,9 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     /* Validate everything that reaches the controller before touching it. The
        soft reset below would otherwise disturb an in-flight transfer on behalf
        of a request that is about to be rejected anyway. */
-    if(addr < 0 || addr > I2C_SMBUS_ADDR_MAX)
+    /* Address zero is the I2C General Call/broadcast address, not a
+       target SMBus device address for these byte/word/block protocols. */
+    if(addr <= 0 || addr > I2C_SMBUS_ADDR_MAX)
     {
         return STATUS_INVALID_PARAMETER;
     }

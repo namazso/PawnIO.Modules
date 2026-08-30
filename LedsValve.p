@@ -241,7 +241,7 @@ DEFINE_IOCTL_SIZED(ioctl_set_startup_color, 3, 0) {
 /// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_get_led_color, 1, 3) {
     new led = in[0];
-    if (led >= NUM_LEDS)
+    if (led < 0 || led >= NUM_LEDS)
         return STATUS_INVALID_PARAMETER;
     
     for (new comp = 0; comp < NUM_COMPONENTS; comp++) {
@@ -258,7 +258,7 @@ DEFINE_IOCTL_SIZED(ioctl_get_led_color, 1, 3) {
 /// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_set_led_color, 4, 0) {
     new led = in[0];
-    if (led >= NUM_LEDS)
+    if (led < 0 || led >= NUM_LEDS)
         return STATUS_INVALID_PARAMETER;
     
     io_out_byte(PORT_BASE + LED_PORT(led) + 0, in[1] & 0xFF);
@@ -277,7 +277,7 @@ DEFINE_IOCTL_SIZED(ioctl_set_led_color, 4, 0) {
 /// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_get_led_components, 1, 1) {
     new led = in[0];
-    if (led >= NUM_LEDS)
+    if (led < 0 || led >= NUM_LEDS)
         return STATUS_INVALID_PARAMETER;
 
     out[0] = NUM_COMPONENTS;

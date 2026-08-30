@@ -18,6 +18,7 @@
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
+#include <registry.inc>
 
 // ThinkPads decode a second interface to the embedded controller as a 32
 // byte window at 0x1600: the ACPI EC command set on 0x1600 (data) and
@@ -28,6 +29,40 @@
 
 is_port_allowed(port) {
     return port >= 0x1600 && port <= 0x161F;
+}
+
+/// Compare two NUL-terminated codepoint strings
+///
+/// @param str1 Unpacked string (one codepoint per cell)
+/// @param str2 Unpacked string (one codepoint per cell)
+/// @return 0 if equal, nonzero otherwise
+stock str_eq(const str1[], const str2[]) {
+    new i = 0;
+    while (str1[i] != 0) {
+        new c = str2[i];
+        if (c == 0)
+            return 1; // str2 ended before str1
+        if (str1[i] != c)
+            return 1; // mismatch
+        i++;
+    }
+    // str1 ended; check that str2 also ended
+    return str2[i] != 0 ? 1 : 0;
+}
+
+/// Check whether a NUL-terminated codepoint string starts with a prefix
+///
+/// @param str Unpacked string (one codepoint per cell)
+/// @param prefix Unpacked string (one codepoint per cell)
+/// @return 0 if str starts with prefix, nonzero otherwise
+stock str_prefix(const str[], const prefix[]) {
+    new i = 0;
+    while (prefix[i] != 0) {
+        if (str[i] != prefix[i])
+            return 1;
+        i++;
+    }
+    return 0;
 }
 
 /// Read byte from the ThinkPad EC window.
@@ -71,10 +106,35 @@ NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
 
-    // Best effort hardware gate without DMI access: an unimplemented LPC
-    // port reads as 0xFF, and 0xFF is never a valid EC status (it would
-    // mean every bit set including both reserved ones). A machine with
-    // this interface answers with a live status byte here.
+    // ThinkPads identify as manufacturer LENOVO with the model name in
+    // SystemFamily or SystemVersion ("ThinkPad X13 Gen 3"), while
+    // SystemProductName holds the machine type (e.g. 21BN00B7MX)
+    new bios_path[] = ''\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS'';
+
+    new manufacturer[64];
+    new mfg_len = 0;
+    if (reg_query_sz(bios_path, ''SystemManufacturer'', manufacturer, sizeof manufacturer, mfg_len) != STATUS_SUCCESS)
+        return STATUS_NOT_SUPPORTED;
+
+    if (str_eq(manufacturer, ''LENOVO'') != 0)
+        return STATUS_NOT_SUPPORTED;
+
+    new family[64];
+    new family_len = 0;
+    if (reg_query_sz(bios_path, ''SystemFamily'', family, sizeof family, family_len) != STATUS_SUCCESS)
+        family[0] = 0;
+
+    new version[64];
+    new version_len = 0;
+    if (reg_query_sz(bios_path, ''SystemVersion'', version, sizeof version, version_len) != STATUS_SUCCESS)
+        version[0] = 0;
+
+    if (str_prefix(family, ''ThinkPad'') != 0 && str_prefix(version, ''ThinkPad'') != 0)
+        return STATUS_NOT_SUPPORTED;
+
+    // An unimplemented LPC port reads as 0xFF, and 0xFF is never a valid
+    // EC status (it would mean every bit set including both reserved
+    // ones). A machine with this interface answers with a live byte here.
     if (io_in_byte(0x1604) == 0xFF)
         return STATUS_NOT_SUPPORTED;
 

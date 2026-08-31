@@ -186,10 +186,14 @@ NTSTATUS:mchbar_init(CodeName:code_name) {
     new base_lo = 0;
     new base_hi = 0;
 
-    pci_config_read_dword(0, 0, 0, MCHBAR_BASE_REG_LOW, base_lo);
+    status = pci_config_read_dword(0, 0, 0, MCHBAR_BASE_REG_LOW, base_lo);
+    if (!NT_SUCCESS(status))
+        return status;
     if (!(base_lo & MCHBAREN))
         return STATUS_NOT_SUPPORTED;
-    pci_config_read_dword(0, 0, 0, MCHBAR_BASE_REG_HIGH, base_hi);
+    status = pci_config_read_dword(0, 0, 0, MCHBAR_BASE_REG_HIGH, base_hi);
+    if (!NT_SUCCESS(status))
+        return status;
 
     g_mchbar_addr = ((base_hi & 0xFFFFFFFF) << 32) | (base_lo & 0xFFFFFFFF);
     g_mchbar_addr &= 0x3FFFFFF8000;
@@ -288,6 +292,9 @@ NTSTATUS:main() {
 }
 
 public NTSTATUS:unload() {
-    io_space_unmap(g_mchbar_va, g_mchbar_size);
+    if (g_mchbar_va != NULL) {
+        io_space_unmap(g_mchbar_va, g_mchbar_size);
+        g_mchbar_va = NULL;
+    }
     return STATUS_SUCCESS;
 }

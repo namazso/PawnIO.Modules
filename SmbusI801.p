@@ -31,6 +31,7 @@
  * Data for SMBus Messages
  */
 #define I2C_SMBUS_BLOCK_MAX	32	/* As specified in SMBus standard */
+#define I2C_SMBUS_ADDR_MAX	0x7F	/* Addressing is 7 bit */
 
 /* i2c_smbus_xfer read or write markers */
 #define I2C_SMBUS_READ	1
@@ -65,12 +66,15 @@
 
 /* PCI Address Constants */
 #define PCICMD		0x004
+#define SMBMBAR     0x010
 #define SMB_BASE	0x020
 #define SMBHSTCFG	0x040
 #define TCOBASE		0x050
 #define TCOCTL		0x054
 
-#define PCICMD_IOBIT	0x01
+#define SMBMBAR_SIZE    0x18
+
+#define PCICMD_MMBIT	0x02
 
 /* Host configuration bits for SMBHSTCFG */
 #define SMBHSTCFG_HST_EN		BIT(0)
@@ -141,81 +145,9 @@ new pci_addresses[4][3] = [
     [0x03, 0x00, 0x4], */
 ];
 
-// Supported PCI device IDs
-// ICH4 introduces CRC and ICH5 introduces block reads
-// So we don't support older chips
-new pci_devices[] = [
-    // 0x2413,     // 82801AA (ICH) - 00:1f.3
-    // 0x2423,     // 82801AA (ICH)
-    // 0x2443,     // 82801BA (ICH2) - 00:1f.3
-    // 0x2483,     // 82801CA (ICH3) - 00:1f.3
-    // 0x24c3,     // 82801DB (ICH4) - 00:1f.3
-    0x24d3,     // 82801E (ICH5) - 00:1f.3
-    0x25a4,     // 6300ESB - 00:1f.3
-    0x266a,     // 82801F (ICH6) - 00:1f.3
-    0x269b,     // 6310ESB/6320ESB - 00:1f.3
-    0x27da,     // 82801G (ICH7) - 00:1f.3
-    0x283e,     // 82801H (ICH8) - 00:1f.3
-    0x2930,     // 82801I (ICH9) - 00:1f.3
-    0x5032,     // EP80579 (Tolapai)
-    0x3a30,     // ICH10 - 00:1f.3
-    0x3a60,     // ICH10 - 00:1f.3
-    0x3b30,     // 5/3400 Series (PCH) - 00:1f.3
-    0x1c22,     // 6 Series (PCH) - 00:1f.3
-    0x1d22,     // Patsburg (PCH) - 00:1f.3
-    // 0x1d70,     // Patsburg (PCH) IDF - 03:00.3
-    // 0x1d71,     // Patsburg (PCH) IDF - 03:00.4
-    // 0x1d72,     // Patsburg (PCH) IDF
-    0x2330,     // DH89xxCC (PCH) - 00:1f.3
-    0x1e22,     // Panther Point (PCH) - 00:1f.3
-    0x8c22,     // Lynx Point (PCH) - 00:1f.3
-    0x9c22,     // Lynx Point-LP (PCH) - 00:1f.3
-    0x1f3c,     // Avoton (SOC) - 00:1f.3
-    0x8d22,     // Wellsburg (PCH) - 00:1f.3
-    // 0x8d7d,     // Wellsburg (PCH) MS - 00:11.1
-    // 0x8d7e,     // Wellsburg (PCH) MS
-    // 0x8d7f,     // Wellsburg (PCH) MS - 00:11.3
-    0x23b0,     // Coleto Creek (PCH) - 00:1f.3
-    0x8ca2,     // Wildcat Point (PCH) - 00:1f.3
-    0x9ca2,     // Wildcat Point-LP (PCH) - 00:1f.3
-    0x0f12,     // BayTrail (SOC) - 00:1f.3
-    0x2292,     // Braswell (SOC) - 00:1f.3
-    0xa123,     // Sunrise Point-H (PCH) - 00:1f.4
-    0x9d23,     // Sunrise Point-LP (PCH) - 00:1f.4
-    0x19df,     // DNV (SOC) - 00:1f.4
-    0x1bc9,     // Emmitsburg (PCH) - 00:1f.4
-    0x5ad4,     // Broxton (SOC) - 00:1f.1
-    0xa1a3,     // Lewisburg (PCH) - 00:1f.4
-    0xa223,     // Lewisburg Supersku (PCH)
-    0xa2a3,     // Kaby Lake PCH-H (PCH) - 00:1f.4
-    0x31d4,     // Gemini Lake (SOC) - 00:1f.1
-    0xa323,     // Cannon Lake-H (PCH) - 00:1f.4
-    0x9da3,     // Cannon Lake-LP (PCH) - 00:1f.4
-    // 0x18df,     // Cedar Fork (PCH) - 00:0f.0
-    0x34a3,     // Ice Lake-LP (PCH) - 00:1f.4
-    0x38a3,     // Ice Lake-N (PCH) - 00:1f.4
-    0x02a3,     // Comet Lake (PCH) - 00:1f.4
-    0x06a3,     // Comet Lake-H (PCH) - 00:1f.4
-    0x4b23,     // Elkhart Lake (PCH) - 00:1f.4
-    0xa0a3,     // Tiger Lake-LP (PCH) - 00:1f.4
-    0x43a3,     // Tiger Lake-H (PCH) - 00:1f.4
-    0x4da3,     // Jasper Lake (SOC) - 00:1f.4
-    0xa3a3,     // Comet Lake-V (PCH) - 00:1f.4
-    0x7aa3,     // Alder Lake-S (PCH) - 00:1f.4
-    0x51a3,     // Alder Lake-P (PCH) - 00:1f.4
-    0x54a3,     // Alder Lake-M (PCH) - 00:1f.4
-    0x7a23,     // Raptor Lake-S (PCH) - 00:1f.4
-    0x7e22,     // Meteor Lake-P (SOC) - 00:1f.4
-    0xae22,     // Meteor Lake SoC-S (SOC)
-    0x7f23,     // Meteor Lake PCH-S (PCH) - 80:1f.4
-    0x5796,     // Birch Stream (SOC) - 00:1f.4
-    0x7722,     // Arrow Lake-H (SOC) - 00:1f.4
-    0xe322,     // Panther Lake-H (SOC)
-    0xe422,     // Panther Lake-P (SOC)
-];
-
 new pci_addr[3];
-new i801_smba;
+new VA:i801_smba;
+new i801_io_smba = 0;
 new write_protection_enabled;
 
 NTSTATUS:i801_init()
@@ -237,14 +169,9 @@ NTSTATUS:i801_init()
         status = pci_config_read_word(pci_addresses[i][0], pci_addresses[i][1], pci_addresses[i][2], 0x02, pci_config);
         if (!NT_SUCCESS(status))
             continue;
-        for (new j; j < sizeof pci_devices; j++) {
-            if (pci_config == pci_devices[j]) {
-                pci_addr = pci_addresses[i];
-                found = true;
-                break;
-            }
-        }
-
+        pci_addr = pci_addresses[i];
+        found = true;
+        break;
     }
 
     if (!found)
@@ -252,26 +179,52 @@ NTSTATUS:i801_init()
 
     // Check SMBus is enabled
     status = pci_config_read_byte(pci_addr[0], pci_addr[1], pci_addr[2], SMBHSTCFG, pci_config);
-    if (!NT_SUCCESS(status))
-        return STATUS_NOT_SUPPORTED;
-    if (!(pci_config & SMBHSTCFG_HST_EN))
+    if (!NT_SUCCESS(status) || !(pci_config & SMBHSTCFG_HST_EN))
         return STATUS_NOT_SUPPORTED;
 
     write_protection_enabled = (pci_config & SMBHSTCFG_SPD_WD) != 0;
 
-    // Get SMBus IO base address, the last bit indicates IO mapping
-    status = pci_config_read_dword(pci_addr[0], pci_addr[1], pci_addr[2], SMB_BASE, pci_config);
-    if (!NT_SUCCESS(status) && !(pci_config & 0x1))
+    // Get SMBus memory base address
+    // Bit 0 indicates memory or IO mapping (0 indicating memory mapped)
+    status = pci_config_read_qword(pci_addr[0], pci_addr[1], pci_addr[2], SMBMBAR, pci_config);
+    if (!NT_SUCCESS(status) || (pci_config & 0x1))
         return STATUS_NOT_SUPPORTED;
 
-    i801_smba = pci_config & 0xffe0;
+    // Bits 1-2 indicates address range (10b for 64-bit, otherwise 32-bit).
+    // Decode the width before masking: only a 64-bit BAR owns the upper dword,
+    // for a 32-bit one it belongs to whatever register follows.
+    new bar_type = pci_config & 0x6;
+    if (bar_type == 0b000)
+        pci_config &= 0xffffffff;
+    else if (bar_type != 0b100)
+        // 1 MB below (01b) and reserved (11b) types aren't supported
+        return STATUS_NOT_SUPPORTED;
+
+    // An unassigned BAR reads back as nothing but its type bits, so the raw
+    // value can be nonzero while the base masks down to physical address zero.
+    // Mapping that would point every later access at low physical memory.
+    new smba_pa = pci_config & 0xffffffffffffff00;
+    if (smba_pa == 0)
+        return STATUS_NOT_SUPPORTED;
+
+    // Map MMIO space
+    i801_smba = io_space_map(smba_pa, SMBMBAR_SIZE);
+    if (i801_smba == NULL) {
+        debug_print(''Failed to map MMIO space\n'');
+        return STATUS_IO_DEVICE_ERROR;
+    }
+
+    // Get SMBus IO base address to use for identification (bit 0 = 1 indicating IO mapped)
+    status = pci_config_read_dword(pci_addr[0], pci_addr[1], pci_addr[2], SMB_BASE, pci_config);
+    if (NT_SUCCESS(status) && (pci_config & 0x1))
+        i801_io_smba = pci_config & 0xffe0;
 
     return STATUS_SUCCESS;
 }
 
 NTSTATUS:i801_get_block_len(&len)
 {
-    len = io_in_byte(SMBHSTDAT0);
+    virtual_read_byte(SMBHSTDAT0, len);
 
     if (len < 1 || len > I2C_SMBUS_BLOCK_MAX) {
         len = 0;
@@ -287,7 +240,7 @@ NTSTATUS:i801_check_pre()
 {
     new hststs;
 
-    hststs = io_in_byte(SMBHSTSTS);
+    virtual_read_byte(SMBHSTSTS, hststs);
     if (hststs & SMBHSTSTS_HOST_BUSY) {
         debug_print(''SMBus is busy, can't use it!\n'');
         return STATUS_DEVICE_BUSY;
@@ -296,20 +249,28 @@ NTSTATUS:i801_check_pre()
     hststs &= STATUS_FLAGS;
     if (hststs) {
         debug_print(''Clearing status flags (%x)\n'', hststs);
-        io_out_byte(SMBHSTSTS, hststs);
+        virtual_write_byte(SMBHSTSTS, hststs);
     }
 
     return STATUS_SUCCESS;
 }
 
 i801_kill() {
+    // In byte-by-byte block mode the controller keeps SMBCLK low while
+    // BYTE_DONE is set. A pending BYTE_DONE must be acknowledged before
+    // KILL can release HOST_BUSY reliably.
+    new hststs;
+    virtual_read_byte(SMBHSTSTS, hststs);
+    if (hststs & SMBHSTSTS_BYTE_DONE)
+        virtual_write_byte(SMBHSTSTS, SMBHSTSTS_BYTE_DONE);
+
     // try to stop the current command
-    io_out_byte(SMBHSTCNT, SMBHSTCNT_KILL);
+    virtual_write_byte(SMBHSTCNT, SMBHSTCNT_KILL);
     microsleep(1000);
-    io_out_byte(SMBHSTCNT, 0);
+    virtual_write_byte(SMBHSTCNT, 0);
 
     // Check if it worked
-    new hststs = io_in_byte(SMBHSTSTS);
+    virtual_read_byte(SMBHSTSTS, hststs);
     if ((hststs & SMBHSTSTS_HOST_BUSY) ||
         !(hststs & SMBHSTSTS_FAILED))
         debug_print(''Failed terminating the transaction\n'');
@@ -350,32 +311,29 @@ NTSTATUS:i801_wait_intr(&hststs, size)
         // Only check for result once per clock cycle
         // Also allows for 1 stop bit
         microsleep_short(clock_us);
-        hststs = io_in_byte(SMBHSTSTS);
-        hststs &= STATUS_ERROR_FLAGS | SMBHSTSTS_INTR;
-        if (!(hststs & SMBHSTSTS_HOST_BUSY) && hststs) {
+        virtual_read_byte(SMBHSTSTS, hststs);
+
+        if (!(hststs & SMBHSTSTS_HOST_BUSY) &&
+            (hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) {
             hststs &= STATUS_ERROR_FLAGS;
             return STATUS_SUCCESS;
         }
-    } while (((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR))) && (get_tick_count() < deadline));
+    } while (get_tick_count() < deadline);
 
-    if ((hststs & SMBHSTSTS_HOST_BUSY) || !(hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR)))
-        return STATUS_IO_TIMEOUT;
-
-    hststs &= (STATUS_ERROR_FLAGS | SMBHSTSTS_INTR);
-
-    return STATUS_SUCCESS;
+    return STATUS_IO_TIMEOUT;
 }
 
 NTSTATUS:i801_transaction(xact, &hststs, size)
 {
-    new old_hstcnt = io_in_byte(SMBHSTCNT);
-    io_out_byte(SMBHSTCNT, old_hstcnt & ~SMBHSTCNT_INTREN);
+    new old_hstcnt;
+    virtual_read_byte(SMBHSTCNT, old_hstcnt);
+    virtual_write_byte(SMBHSTCNT, old_hstcnt & ~SMBHSTCNT_INTREN);
 
-    io_out_byte(SMBHSTCNT, xact | SMBHSTCNT_START);
+    virtual_write_byte(SMBHSTCNT, xact | SMBHSTCNT_START);
 
     new NTSTATUS:status = i801_wait_intr(hststs, size);
     // restore previous HSTCNT, enabling interrupts if previously enabled
-    io_out_byte(SMBHSTCNT, old_hstcnt);
+    virtual_write_byte(SMBHSTCNT, old_hstcnt);
     return status;
 }
 
@@ -389,7 +347,7 @@ NTSTATUS:i801_wait_byte_done(&hststs)
 
     do {
         microsleep_short(clock_us);
-        hststs = io_in_byte(SMBHSTSTS);
+        virtual_read_byte(SMBHSTSTS, hststs);
     } while ((hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_BYTE_DONE)) == 0 && (get_tick_count() < deadline));
 
     if ((hststs & (STATUS_ERROR_FLAGS | SMBHSTSTS_BYTE_DONE)) == 0)
@@ -416,8 +374,8 @@ NTSTATUS:i801_i2c_blk_byte_by_byte(read_write, in[33], out[33], &hststs)
     new len = in[0];
 
     if (read_write == I2C_SMBUS_WRITE) {
-        io_out_byte(SMBHSTDAT0, len);
-        io_out_byte(SMBBLKDAT, in[1]);
+        virtual_write_byte(SMBHSTDAT0, len);
+        virtual_write_byte(SMBBLKDAT, in[1]);
     }
 
     new smbcmd;
@@ -426,27 +384,34 @@ NTSTATUS:i801_i2c_blk_byte_by_byte(read_write, in[33], out[33], &hststs)
     else
         smbcmd = I801_BLOCK_DATA;
 
+    // LAST_BYTE has to be visible before BYTE_DONE for the previous byte is
+    // acknowledged. For a one-byte read it therefore has to be set before START.
+    if (len == 1 && read_write == I2C_SMBUS_READ)
+        smbcmd |= SMBHSTCNT_LAST_BYTE;
+
+    virtual_write_byte(SMBHSTCNT, smbcmd | SMBHSTCNT_START);
+
     for (new i = 1; i <= len; i++) {
-        if (i == len && read_write == I2C_SMBUS_READ)
-            smbcmd |= SMBHSTCNT_LAST_BYTE;
-
-        io_out_byte(SMBHSTCNT, smbcmd);
-
-        if (i == 1)
-            io_out_byte(SMBHSTCNT, io_in_byte(SMBHSTCNT) | SMBHSTCNT_START);
-
         new NTSTATUS:byte_status = i801_wait_byte_done(hststs);
-        if (!NT_SUCCESS(byte_status) || hststs)
+        if (!NT_SUCCESS(byte_status))
+            return byte_status;
+        if (hststs)
             return i801_hststs_to_ntstatus(hststs);
 
-        if (read_write == I2C_SMBUS_READ)
-            out[i] = io_in_byte(SMBBLKDAT);
+        if (read_write == I2C_SMBUS_READ) {
+            virtual_read_byte(SMBBLKDAT, out[i]);
+
+            // Program LAST_BYTE while the controller is still paused on the
+            // penultimate BYTE_DONE. Clearing BYTE_DONE then starts the last byte.
+            if (i == len - 1)
+                virtual_write_byte(SMBHSTCNT, smbcmd | SMBHSTCNT_LAST_BYTE);
+        }
 
         if (read_write == I2C_SMBUS_WRITE && i + 1 <= len)
-            io_out_byte(SMBBLKDAT, in[i + 1]);
+            virtual_write_byte(SMBBLKDAT, in[i + 1]);
 
         // signal SMBBLKDAT ready
-        io_out_byte(SMBHSTSTS, SMBHSTSTS_BYTE_DONE);
+        virtual_write_byte(SMBHSTSTS, SMBHSTSTS_BYTE_DONE);
     }
 
     out[0] = len;
@@ -473,15 +438,18 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
     }
 
     /* Set block buffer mode */
-    io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) | SMBAUXCTL_E32B);
+    new smbauxctl;
+    virtual_read_byte(SMBAUXCTL, smbauxctl);
+    virtual_write_byte(SMBAUXCTL, smbauxctl | SMBAUXCTL_E32B);
 
     if (read_write == I2C_SMBUS_WRITE) {
         len = in[0];
         size += len;
-        io_out_byte(SMBHSTDAT0, len);
-        io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
+        virtual_write_byte(SMBHSTDAT0, len);
+        new smbhstcnt;
+        virtual_read_byte(SMBHSTCNT, smbhstcnt);
         for (new i = 0; i < len; i++)
-            io_out_byte(SMBBLKDAT, in[i+1]);
+            virtual_write_byte(SMBBLKDAT, in[i+1]);
     }
 
     // size = command + count + address (read only) + data...
@@ -503,18 +471,20 @@ NTSTATUS:i801_block_transaction_by_block(read_write, command, in[33], out[33], &
         }
 
         out[0] = len;
-        io_in_byte(SMBHSTCNT);	/* reset the data buffer index */
+        new hstcnt;
+        virtual_read_byte(SMBHSTCNT, hstcnt);
         for (new i = 0; i < len; i++)
-            out[i + 1] = io_in_byte(SMBBLKDAT);
+            virtual_read_byte(SMBBLKDAT, out[i + 1]);
     }
 cleanup:
-    io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & ~SMBAUXCTL_E32B);
+    virtual_read_byte(SMBAUXCTL, smbauxctl);
+    virtual_write_byte(SMBAUXCTL, smbauxctl & ~SMBAUXCTL_E32B);
     return status;
 }
 
 Void:i801_set_hstadd(addr, read_write)
 {
-    io_out_byte(SMBHSTADD, ((addr & 0x7f) << 1) | (read_write & 0x01));
+    virtual_write_byte(SMBHSTADD, ((addr & 0x7f) << 1) | (read_write & 0x01));
 }
 
 NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &hststs)
@@ -531,15 +501,15 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         {
             i801_set_hstadd(addr, read_write);
             if (read_write == I2C_SMBUS_WRITE)
-                io_out_byte(SMBHSTCMD, hstcmd);
+                virtual_write_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE;
         }
     case I2C_SMBUS_BYTE_DATA:
         {
             i801_set_hstadd(addr, read_write);
             if (read_write == I2C_SMBUS_WRITE)
-                io_out_byte(SMBHSTDAT0, in);
-            io_out_byte(SMBHSTCMD, hstcmd);
+                virtual_write_byte(SMBHSTDAT0, in);
+            virtual_write_byte(SMBHSTCMD, hstcmd);
             xact = I801_BYTE_DATA;
             size += read_write;
         }
@@ -547,19 +517,19 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         {
             i801_set_hstadd(addr, read_write);
             if (read_write == I2C_SMBUS_WRITE) {
-                io_out_byte(SMBHSTDAT0, in & 0xff);
-                io_out_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
+                virtual_write_byte(SMBHSTDAT0, in & 0xff);
+                virtual_write_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
             }
-            io_out_byte(SMBHSTCMD, hstcmd);
+            virtual_write_byte(SMBHSTCMD, hstcmd);
             xact = I801_WORD_DATA;
             size += read_write;
         }
     case I2C_SMBUS_PROC_CALL:
         {
             i801_set_hstadd(addr, read_write);
-            io_out_byte(SMBHSTDAT0, in & 0xff);
-            io_out_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
-            io_out_byte(SMBHSTCMD, hstcmd);
+            virtual_write_byte(SMBHSTDAT0, in & 0xff);
+            virtual_write_byte(SMBHSTDAT1, (in & 0xff00) >>> 8);
+            virtual_write_byte(SMBHSTCMD, hstcmd);
             read_write = I2C_SMBUS_READ;
             xact = I801_PROC_CALL;
         }
@@ -579,11 +549,11 @@ NTSTATUS:i801_simple_transaction(addr, hstcmd, read_write, command, in, &out, &h
         switch (command) {
         case I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA:
             {
-                out = io_in_byte(SMBHSTDAT0);
+                virtual_read_byte(SMBHSTDAT0, out);
             }
         case I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
             {
-                out = io_in_byte(SMBHSTDAT0) | (io_in_byte(SMBHSTDAT1) << 8);
+                virtual_read_word(SMBHSTDAT0, out);
             }
         }
     }
@@ -608,9 +578,9 @@ NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33],
     // For I2C block reads the ICH5 datasheet (p.240) requires the offset/command
     // byte to be written to SMBHSTDAT1 instead of SMBHSTCMD.
     if (command == I2C_SMBUS_I2C_BLOCK_DATA && read_write == I2C_SMBUS_READ)
-        io_out_byte(SMBHSTDAT1, hstcmd);
+        virtual_write_byte(SMBHSTDAT1, hstcmd);
     else
-        io_out_byte(SMBHSTCMD, hstcmd);
+        virtual_write_byte(SMBHSTCMD, hstcmd);
 
     // I2C block data uses byte-by-byte mode; SMBus block and proc-call use block-buffer mode.
     if (command == I2C_SMBUS_I2C_BLOCK_DATA)
@@ -629,10 +599,13 @@ NTSTATUS:i801_inuse(bool:inuse)
         // Wait for device to be unlocked by BIOS/ACPI
         // Linux doesn't do this, since some BIOSes might not unlock it
         new deadline = get_tick_count() + MAX_TIMEOUT;
-        new is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
+        new is_inuse;
+        virtual_read_byte(SMBHSTSTS, is_inuse);
+        is_inuse &= SMBHSTSTS_INUSE_STS;
         while (is_inuse && (get_tick_count() < deadline)) {
             microsleep(250);
-            is_inuse = io_in_byte(SMBHSTSTS) & SMBHSTSTS_INUSE_STS;
+            virtual_read_byte(SMBHSTSTS, is_inuse);
+            is_inuse &= SMBHSTSTS_INUSE_STS;
         }
 
         if (is_inuse) {
@@ -643,24 +616,34 @@ NTSTATUS:i801_inuse(bool:inuse)
     } else {
         // Unlock the SMBus device for use by BIOS/ACPI, and clear status flags
         // if not done already.
-        io_out_byte(SMBHSTSTS, SMBHSTSTS_INUSE_STS | STATUS_FLAGS);
+        virtual_write_byte(SMBHSTSTS, SMBHSTSTS_INUSE_STS | STATUS_FLAGS);
         return STATUS_SUCCESS;
     }
 }
 
 NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
 {
-    new NTSTATUS:status, hststs;
+    new NTSTATUS:status, hststs, smbauxctl;
+    new bool:acquired = false;
 
     status = i801_inuse(true);
     if (!NT_SUCCESS(status))
         goto unlock;
 
+    // INUSE_STS is ours only past this point, so only now may we release it
+    acquired = true;
+
     status = i801_check_pre();
     if (!NT_SUCCESS(status))
         goto unlock;
 
-    io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & (~SMBAUXCTL_CRC));
+    status = virtual_read_byte(SMBAUXCTL, smbauxctl);
+    if (!NT_SUCCESS(status))
+        goto unlock;
+
+    status = virtual_write_byte(SMBAUXCTL, smbauxctl & (~SMBAUXCTL_CRC));
+    if (!NT_SUCCESS(status))
+        goto unlock;
 
     switch (size) {
         case I2C_SMBUS_QUICK, I2C_SMBUS_BYTE, I2C_SMBUS_BYTE_DATA, I2C_SMBUS_WORD_DATA, I2C_SMBUS_PROC_CALL:
@@ -682,24 +665,35 @@ NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
     status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
-    i801_inuse(false);
+    if (acquired)
+        i801_inuse(false);
 
     return status;
 }
 
 NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
 {
-    new NTSTATUS:status, hststs;
+    new NTSTATUS:status, hststs, smbauxctl;
+    new bool:acquired = false;
 
     status = i801_inuse(true);
     if (!NT_SUCCESS(status))
         goto unlock;
 
+    // INUSE_STS is ours only past this point, so only now may we release it
+    acquired = true;
+
     status = i801_check_pre();
     if (!NT_SUCCESS(status))
         goto unlock;
 
-    io_out_byte(SMBAUXCTL, io_in_byte(SMBAUXCTL) & (~SMBAUXCTL_CRC));
+    status = virtual_read_byte(SMBAUXCTL, smbauxctl);
+    if (!NT_SUCCESS(status))
+        goto unlock;
+
+    status = virtual_write_byte(SMBAUXCTL, smbauxctl & (~SMBAUXCTL_CRC));
+    if (!NT_SUCCESS(status))
+        goto unlock;
 
     switch (size) {
         case I2C_SMBUS_BLOCK_DATA, I2C_SMBUS_BLOCK_PROC_CALL, I2C_SMBUS_I2C_BLOCK_DATA:
@@ -720,7 +714,8 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
     status = i801_hststs_to_ntstatus(hststs);
 
 unlock:
-    i801_inuse(false);
+    if (acquired)
+        i801_inuse(false);
 
     return status;
 }
@@ -737,7 +732,7 @@ DEFINE_IOCTL_SIZED(ioctl_identity, 0, 3) {
 
     out[0] = CHAR4_CONST('i', '8', '0', '1');
 
-    out[1] = i801_smba;
+    out[1] = i801_io_smba;
 
     // Read the PCI vendor/device ID
     new pci_ids;
@@ -812,20 +807,36 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     new command = in[2];
     new hstcmd = in[3];
 
-    new pci_cmd_original;
-    new pci_cmd_modified;
+    // Validate before any PCI or controller change. Only the low bit of the
+    // direction reaches SMBHSTADD, while the rest of the driver compares the
+    // whole value against I2C_SMBUS_WRITE, so e.g. 2 would start a write and
+    // then be read back as if it were a read. The value also lands in the
+    // transfer time estimate, where a large one turns into a huge busy wait.
+    if (read_write != I2C_SMBUS_READ && read_write != I2C_SMBUS_WRITE)
+        return STATUS_INVALID_PARAMETER;
 
-    pci_config_read_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
-
-    //PCI CMD IO not enabled
-    if (0 == (pci_cmd_original & PCICMD_IOBIT))
-    {
-        //Enable PCI CMD IO
-        pci_cmd_modified = pci_cmd_original | PCICMD_IOBIT;
-        pci_config_write_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_modified);
-    }
+    // Anything wider than 7 bits would silently alias a different slave
+    if (address < 0 || address > I2C_SMBUS_ADDR_MAX)
+        return STATUS_INVALID_PARAMETER;
 
     new NTSTATUS:status;
+    new pci_cmd_original;
+    new bool:pci_cmd_enabled_here = false;
+
+    status = pci_config_read_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    //PCI CMD memory decoding not enabled
+    if (0 == (pci_cmd_original & PCICMD_MMBIT))
+    {
+        //Enable it for the duration of this call
+        status = pci_config_write_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original | PCICMD_MMBIT);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        pci_cmd_enabled_here = true;
+    }
 
     switch (hstcmd) {
     case I2C_SMBUS_QUICK:
@@ -970,7 +981,8 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
             if (!NT_SUCCESS(status))
                 goto getout;
 
-            pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX + 1);
+            out[0] = out_data[0];
+            pack_bytes_le(out_data, out, I2C_SMBUS_BLOCK_MAX, 1, 8);
         }
         default:
         {
@@ -980,9 +992,20 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     }
 
 getout:
-    //Restore original PCI CMD, if it was modified
-    if (pci_cmd_original != pci_cmd_modified)
-        pci_config_write_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_original);
+    //Undo only the bit we set, and only if we were the ones to set it.
+    //Re-read rather than rewriting the whole word from the entry snapshot,
+    //so an unrelated change made meanwhile isn't clobbered.
+    if (pci_cmd_enabled_here)
+    {
+        new pci_cmd_current;
+        new NTSTATUS:restore_status = pci_config_read_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_current);
+        if (NT_SUCCESS(restore_status))
+            restore_status = pci_config_write_word(pci_addr[0], pci_addr[1], pci_addr[2], PCICMD, pci_cmd_current & ~PCICMD_MMBIT);
+
+        //Leaving decoding enabled is worth reporting even if the transfer worked
+        if (NT_SUCCESS(status) && !NT_SUCCESS(restore_status))
+            status = restore_status;
+    }
 
     return status;
 }
@@ -992,4 +1015,10 @@ NTSTATUS:main() {
         return STATUS_NOT_SUPPORTED;
 
     return i801_init();
+}
+
+public NTSTATUS:unload() {
+    if (i801_smba != NULL)
+        io_space_unmap(i801_smba, SMBMBAR_SIZE);
+    return STATUS_SUCCESS;
 }

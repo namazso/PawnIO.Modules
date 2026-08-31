@@ -63,6 +63,10 @@
 
 #define MSR_OC_MAILBOX          0x00000150
 
+// Hardware prefetcher controls (Intel SDM Vol. 4): bit 0 L2 HW prefetcher, bit 1 L2
+// adjacent-line, bit 2 DCU, bit 3 DCU IP. Used for CPU tuning.
+#define MSR_MISC_FEATURE_CONTROL    0x000001a4
+
 bool:is_allowed_msr_read(msr) {
     switch (msr) {
         case MSR_IA32_PACKAGE_THERM_STATUS, MSR_IA32_PERF_STATUS, MSR_IA32_TEMPERATURE_TARGET,
@@ -73,7 +77,8 @@ bool:is_allowed_msr_read(msr) {
             MSR_PP0_POWER_LIMIT, MSR_PP0_ENERGY_STATUS, MSR_PP0_POLICY, MSR_PP0_PERF_STATUS,
             MSR_PP1_POWER_LIMIT, MSR_PP1_ENERGY_STATUS, MSR_PP1_POLICY,
             MSR_PLATFORM_ENERGY_STATUS, MSR_RAPL_POWER_UNIT, MSR_PLATFORM_INFO,
-            MSR_EBL_CR_POWERON, MSR_TURBO_RATIO_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA:
+            MSR_EBL_CR_POWERON, MSR_TURBO_RATIO_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA,
+            MSR_MISC_FEATURE_CONTROL:
             return true;
         default:
             return false;
@@ -83,7 +88,8 @@ bool:is_allowed_msr_read(msr) {
 
 bool:is_allowed_msr_write(msr) {
     switch (msr) {
-        case MSR_VR_CURRENT_CONFIG, MSR_PKG_POWER_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA:
+        case MSR_VR_CURRENT_CONFIG, MSR_PKG_POWER_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA,
+             MSR_MISC_FEATURE_CONTROL:
             return true;
         default:
             return false;

@@ -57,8 +57,10 @@ resolve_cstates_io_offset() {
         g_cstates_io_offset = 0x9C;
         return;
     } else if (didvid == 0x43851002) {
+        // The revision lives at offset 0x08, offset 0 is the ID register we
+        // just matched on, whose low byte is always the vendor byte 0x02.
         new rev;
-        status = pci_config_read_dword(0, 20, 0, 0, rev);
+        status = pci_config_read_byte(0, 20, 0, 0x08, rev);
         if (!NT_SUCCESS(status))
             return;
         g_cstates_io_offset = rev & 0xFF < 0x40 ? 0xB3 : 0x9C;

@@ -48,6 +48,8 @@
 #define PCI_CFG_SPACE_EXP_SIZE  0x1000
 
 // PCI config-space offsets used here.
+#define PCI_CFG_COMMAND         0x04
+#define PCI_COMMAND_MEMORY      0x02
 #define PCI_CFG_BAR0_LOW        0x10
 #define PCI_CFG_BAR0_HIGH       0x14
 #define PCI_BAR_MEM_TYPE_64BIT  0x4
@@ -118,14 +120,27 @@ NTSTATUS:oobmsm_init() {
     if ((vid_did & 0xFFFF) == 0xFFFF)
         return STATUS_NOT_SUPPORTED;
 
+    // The endpoint has to be decoding memory already. Mapping the BAR does not
+    // enable its decoder, so without this a disabled function would map fine
+    // and then hand back bus fill values as if they were real samples.
+    new command = 0;
+    status = pci_config_read_word(OOBMSM_BUS, OOBMSM_DEV, OOBMSM_FN, PCI_CFG_COMMAND, command);
+    if (!NT_SUCCESS(status))
+        return status;
+    if ((command & PCI_COMMAND_MEMORY) == 0)
+        return STATUS_NOT_SUPPORTED;
+
     // Read BAR0 (64-bit memory BAR on every observed stepping).
     new base_lo = 0;
     new base_hi = 0;
     pci_config_read_dword(OOBMSM_BUS, OOBMSM_DEV, OOBMSM_FN, PCI_CFG_BAR0_LOW, base_lo);
     if (base_lo == 0 || base_lo == 0xFFFFFFFF)
         return STATUS_NOT_SUPPORTED;
-    if ((base_lo & PCI_BAR_MEM_TYPE_64BIT) != 0)
-        pci_config_read_dword(OOBMSM_BUS, OOBMSM_DEV, OOBMSM_FN, PCI_CFG_BAR0_HIGH, base_hi);
+    if ((base_lo & PCI_BAR_MEM_TYPE_64BIT) != 0) {
+        status = pci_config_read_dword(OOBMSM_BUS, OOBMSM_DEV, OOBMSM_FN, PCI_CFG_BAR0_HIGH, base_hi);
+        if (!NT_SUCCESS(status))
+            return status;
+    }
 
     g_bar_addr = ((base_hi & 0xFFFFFFFF) << 32) | (base_lo & PCI_BAR_MEM_ADDR_MASK);
     if (g_bar_addr == 0)

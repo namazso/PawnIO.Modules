@@ -277,7 +277,7 @@ NTSTATUS:ec_command_lpc_3(command, version, ec_out_data[EC_LPC_HOST_PACKET_SIZE]
 }
 
 NTSTATUS:ec_readmem_lpc(offset, bytes, dest[EC_MEMMAP_SIZE]) {
-    if ((offset + bytes) >= EC_MEMMAP_SIZE)
+    if ((offset + bytes) > EC_MEMMAP_SIZE)
         return STATUS_INVALID_PARAMETER;
 
     if (is_mec) {

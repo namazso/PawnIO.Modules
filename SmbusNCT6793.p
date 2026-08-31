@@ -62,8 +62,13 @@
 
 #define SIO_REG_LDSEL               0x07    /* Logical device select            */
 #define SIO_REG_DEVID               0x20    /* Device ID (2 bytes)              */
+#define SIO_REG_ENABLE              0x30    /* Logical device enable            */
 #define SIO_REG_SMBA                0x62    /* SMBus base address register      */
 #define SIO_REG_LOGDEV              0x07    /* Logical Device Register          */
+
+#define SMBUS_IO_LAST_OFFSET        0x0E
+#define PCI_CONFIG_ADDRESS_PORT     0xCF8
+#define PCI_CONFIG_DATA_PORT_END    0xCFF
 
 #define SIO_NCT6791_ID              0xc800
 #define SIO_NCT6792_ID              0xc910
@@ -71,9 +76,10 @@
 #define SIO_NCT6795_ID              0xd350
 #define SIO_NCT6796_ID              0xd420
 #define SIO_NCT6798_ID              0xd428
-#define SIO_ID_MASK                 0xFFF0
+#define SIO_ID_MASK                 0xFFF8
 
 #define I2C_SMBUS_BLOCK_MAX         32      /* As specified in SMBus standard   */
+#define I2C_SMBUS_ADDR_MAX          0x7F    /* Addressing is 7 bit              */
 
 /* i2c_smbus_xfer read or write markers */
 #define I2C_SMBUS_READ              1
@@ -170,13 +176,41 @@ NTSTATUS:nct6793_init()
     /* Enable SMBus logical device */
     superio_outb(sioaddr, SIO_REG_LOGDEV, NCT6793_LD_SMBUS);
 
+    new bool:smba_enabled = (superio_inb(sioaddr, SIO_REG_ENABLE) & BIT(0)) != 0;
+
     /* Determine base address */
-    nuvoton_nct6793_smba = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+    new smba = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+    new smba_verify = (superio_inb(sioaddr, SIO_REG_SMBA) << 8) | superio_inb(sioaddr, SIO_REG_SMBA + 1);
+    new bool:smba_stable = smba == smba_verify;
+
+    /* Align the base the way the Super IO decoder does, then require the full
+       controller register window to be a usable 16-bit I/O range. */
+    smba &= ~7;
+
+    if( !smba_enabled
+     || !smba_stable
+     || smba < 0x100
+     || smba == 0xFFF8
+     || smba > (0xFFFF - SMBUS_IO_LAST_OFFSET)
+     || (smba <= PCI_CONFIG_DATA_PORT_END && (smba + SMBUS_IO_LAST_OFFSET) >= PCI_CONFIG_ADDRESS_PORT))
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    nuvoton_nct6793_smba = smba;
 
     /* Read initial clock setting */
     smbus_clock = (io_in_byte(SMBHSTCLK) & 0xF);
 
     return STATUS_SUCCESS;
+}
+
+/* Take the controller back out of manual mode, so a transfer that timed out
+   cannot be left driving the bus, and report the timeout. */
+NTSTATUS:nct6793_abort()
+{
+    io_out_byte(SMBHSTCTL, NCT6793_SOFT_RESET);
+    return STATUS_IO_TIMEOUT;
 }
 
 NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
@@ -185,6 +219,46 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     new i;
     new len;
     new timeout;
+
+    /* Validate everything that reaches the controller before touching it. The
+       soft reset below would otherwise disturb an in-flight transfer on behalf
+       of a request that is about to be rejected anyway. */
+    /* Address zero is the I2C General Call/broadcast address, not a
+       target SMBus device address for these byte/word/block protocols. */
+    if(addr <= 0 || addr > I2C_SMBUS_ADDR_MAX)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if(read_write != I2C_SMBUS_READ && read_write != I2C_SMBUS_WRITE)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if(command < 0 || command > 0xFF)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if(size == I2C_SMBUS_BLOCK_DATA)
+    {
+        /* Block read not supported by this driver */
+        if(read_write != I2C_SMBUS_WRITE)
+        {
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        len = GET_BYTE_LE(in, 0);
+
+        if(len == 0 || len > I2C_SMBUS_BLOCK_MAX)
+        {
+            return STATUS_INVALID_BLOCK_LENGTH;
+        }
+    }
+    else if(size != I2C_SMBUS_BYTE_DATA && size != I2C_SMBUS_WORD_DATA)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
 
     /* Perform soft reset of SMBus controller */
     io_out_byte(SMBHSTCTL, NCT6793_SOFT_RESET);
@@ -240,46 +314,32 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
                 io_out_byte(SMBHSTADD, (addr << 1) | read_write);
                 io_out_byte(SMBHSTIDX, command);
 
-                /* If write, write up to 4 bytes into SMBHSTDAT */
-                if(read_write == I2C_SMBUS_WRITE)
+                /* Write up to 4 bytes into SMBHSTDAT. The direction and the
+                   length were both checked before the reset. */
+                io_out_byte(SMBBLKSZ, len);
+
+                cnt = 1;
+                if(len >= 4)
                 {
-                    len = GET_BYTE_LE(in, 0);
-                    if(len == 0 || len > I2C_SMBUS_BLOCK_MAX)
+                    for(i = cnt; i <= 4; i++)
                     {
-                        return STATUS_INVALID_BLOCK_LENGTH;
+                        io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
                     }
 
-                    io_out_byte(SMBBLKSZ, len);
-
-                    cnt = 1;
-                    if(len >= 4)
-                    {
-                        for(i = cnt; i <= 4; i++)
-                        {
-                            io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
-                        }
-
-                        len -= 4;
-                        cnt += 4;
-                    }
-                    else
-                    {
-                        for(i = cnt; i <= len; i++)
-                        {
-                            io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
-                        }
-
-                        len = 0;
-                    }
-
-                    io_out_byte(SMBHSTCMD, NCT6793_WRITE_BLOCK);
+                    len -= 4;
+                    cnt += 4;
                 }
-
-                /* Block read not supported by this driver */
                 else
                 {
-                    return STATUS_NOT_SUPPORTED;
+                    for(i = cnt; i <= len; i++)
+                    {
+                        io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
+                    }
+
+                    len = 0;
                 }
+
+                io_out_byte(SMBHSTCMD, NCT6793_WRITE_BLOCK);
             }
         
         default:
@@ -301,7 +361,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
             {
                 if(timeout > MAX_RETRIES)
                 {
-                    return STATUS_TIMEOUT;
+                    return nct6793_abort();
                 }
 
                 microsleep_long(250);
@@ -311,7 +371,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
             /* Load more bytes into FIFO */
             if(len >= 4)
             {
-                for(i = cnt; i <= (cnt + 4); i++)
+                for(i = cnt; i < (cnt + 4); i++)
                 {
                     io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
                 }
@@ -321,7 +381,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
             }
             else
             {
-                for(i = cnt; i <= (cnt + len); i++)
+                for(i = cnt; i < (cnt + len); i++)
                 {
                     io_out_byte(SMBHSTDAT, GET_BYTE_LE(in, i));
                 }
@@ -337,7 +397,7 @@ NTSTATUS:nct6793_access(addr, read_write, command, size, in[5], out[5])
     {
         if(timeout > MAX_RETRIES)
         {
-            return STATUS_TIMEOUT;
+            return nct6793_abort();
         }
 
         microsleep_long(250);
@@ -427,8 +487,7 @@ DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
 /// SMBus transfer.
 ///
 /// Performs a transfer of data over the SMBus using the specified command.
-/// I2C_SMBUS_QUICK (protocol 0) only requires the address and read/write parameters, command must be left as 0.
-/// I2C_SMBUS_BYTE (1), I2C_SMBUS_BYTE_DATA (2), and I2C_SMBUS_WORD_DATA (3) require the address, read/write, command, and data[0] (write only) parameters.
+/// I2C_SMBUS_BYTE_DATA (2) and I2C_SMBUS_WORD_DATA (3) require the address, read/write, command, and data[0] (write only) parameters.
 /// I2C_SMBUS_BLOCK_DATA (5) requires the address, read/write, command, data as length, and array data parameters.
 ///
 /// @param in [0] = Address, [1] = Read(1)/Write(0), [2] = Command, [3] = Protocol, [4] Data, [5..9] = Array Data (byte packed)

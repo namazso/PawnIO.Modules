@@ -25,6 +25,9 @@ const BASE_ADDRESS_REGISTER_2 = 0x62;
 
 const DEVICE_SELECT_REGISTER = 0x07;
 
+const PCI_CONFIG_PORT_FIRST = 0x0CF8;
+const PCI_CONFIG_PORT_LAST = 0x0CFF;
+
 new g_register_port;
 new g_bars[128];
 new g_bars_count = 0;
@@ -57,6 +60,10 @@ bool:select(val) {
     return superio_inb(DEVICE_SELECT_REGISTER) == val;
 }
 
+bool:is_port_blacklisted(port) {
+    return port >= PCI_CONFIG_PORT_FIRST && port <= PCI_CONFIG_PORT_LAST;
+}
+
 check_and_add_bar(val, val_v) {
     if (val == val_v && val != 0 && val != 0xFFFF) {
         // in fixed range, probably some garbage
@@ -67,12 +74,18 @@ check_and_add_bar(val, val_v) {
         if ((val & 0x07) == 0x05)
             val &= 0xFFF8;
 
+        if (is_port_blacklisted(val) || is_port_blacklisted(val + 7))
+            return;
+
         // duplicate
         if (g_bars_count > 0 && g_bars[g_bars_count - 1] == val)
             return;
 
         // duplicate
         if (g_bars_count > 1 && g_bars[g_bars_count - 2] == val)
+            return;
+
+        if (g_bars_count >= sizeof g_bars)
             return;
 
         g_bars[g_bars_count] = val;
@@ -154,6 +167,9 @@ DEFINE_IOCTL_SIZED(ioctl_find_bars, 0, 0) {
 }
 
 bool:is_port_allowed(port) {
+    if (is_port_blacklisted(port))
+        return false;
+
     if (port == g_register_port || port == g_register_port + 1)
         return true;
 

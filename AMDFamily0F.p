@@ -74,10 +74,10 @@ DEFINE_IOCTL_SIZED(ioctl_read_msr, 1, 1) {
 /// @warning You should acquire the "\BaseNamedObjects\Access_PCI" mutant before calling this
 DEFINE_IOCTL_SIZED(ioctl_get_thermtrip, 2, 1) {
     new cpu_idx = in[0];
-    if (cpu_idx > 1)
+    if (cpu_idx < 0 || cpu_idx > 1)
         return STATUS_INVALID_PARAMETER;
     new core_idx = in[1];
-    if (core_idx > 1)
+    if (core_idx < 0 || core_idx > 1)
         return STATUS_INVALID_PARAMETER;
 
     new device = PCI_BASE_DEVICE + cpu_idx;
@@ -93,7 +93,8 @@ DEFINE_IOCTL_SIZED(ioctl_get_thermtrip, 2, 1) {
     if ((didvid >>> 16) != MISCELLANEOUS_CONTROL_DID)
         return STATUS_NOT_SUPPORTED;
     
-    new sel_cpu = g_model < 40 ? (core_idx ? 4 : 0) : (core_idx ? 0 : 4);
+    // The core select encoding flipped with NPT, which starts at model 0x40
+    new sel_cpu = g_model < 0x40 ? (core_idx ? 4 : 0) : (core_idx ? 0 : 4);
     status = pci_config_write_dword(PCI_BUS, device, MISCELLANEOUS_CONTROL_FUNCTION, THERMTRIP_STATUS_REGISTER, sel_cpu);
     if (!NT_SUCCESS(status))
         return status;

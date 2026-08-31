@@ -32,6 +32,7 @@
 #define PCI_COMMAND_MEMORY             0x0002
 #define PCI_BAR_IO_SPACE               0x0001
 #define PCI_BAR_MEM_TYPE_MASK          0x0006
+#define PCI_BAR_MEM_TYPE_32BIT         0x0000
 #define PCI_BAR_MEM_TYPE_64BIT         0x0004
 #define PCI_BAR_MEM_ADDR_MASK          0xFFFFFFF0
 
@@ -133,7 +134,12 @@ NTSTATUS:map_controller(bus, device, function) {
         (bar_lo & PCI_BAR_IO_SPACE) != 0)
         return STATUS_NOT_SUPPORTED;
 
-    if ((bar_lo & PCI_BAR_MEM_TYPE_MASK) == PCI_BAR_MEM_TYPE_64BIT) {
+    new bar_type = bar_lo & PCI_BAR_MEM_TYPE_MASK;
+    if (bar_type != PCI_BAR_MEM_TYPE_32BIT &&
+        bar_type != PCI_BAR_MEM_TYPE_64BIT)
+        return STATUS_NOT_SUPPORTED;
+
+    if (bar_type == PCI_BAR_MEM_TYPE_64BIT) {
         status = pci_config_read_dword(
             bus, device, function, PCI_CFG_BAR0_HIGH, bar_hi);
         if (!NT_SUCCESS(status))
@@ -273,8 +279,8 @@ DEFINE_IOCTL_SIZED(ioctl_get_interrupter, 4, 4) {
     return status;
 }
 
-/// Set only the low 16-bit IMOD interval for one configured, enabled
-/// interrupter. The live high 16-bit counter is never written.
+/// Set the low 16-bit IMOD interval for one configured, enabled interrupter.
+/// The required 32-bit read/modify/write preserves the sampled counter field.
 ///
 /// @param in [0] PCI bus, [1] device, [2] function,
 ///           [3] interrupter index, [4] interval (0..65535)
@@ -318,18 +324,32 @@ DEFINE_IOCTL_SIZED(ioctl_set_imod, 5, 4) {
         return STATUS_DEVICE_NOT_READY;
     }
 
-    // A 16-bit write updates only the interval. It does not copy a sampled
-    // high-word counter back into the live IMOD register.
-    status = virtual_write_word(intr_va + XHCI_IMOD, interval);
-    if (NT_SUCCESS(status))
-        status = virtual_read_dword(intr_va + XHCI_IMOD, readback);
+    // Runtime registers are 32-bit registers. Preserve the sampled counter
+    // field and update the interval with the specification-required Dword RMW.
+    new write_value = (old_imod & ~XHCI_IMOD_INTERVAL_MASK) | interval;
+    status = virtual_write_dword(intr_va + XHCI_IMOD, write_value);
+    if (NT_SUCCESS(status)) {
+        new NTSTATUS:verify_status = virtual_read_dword(
+            intr_va + XHCI_IMOD, readback);
 
-    if (NT_SUCCESS(status) &&
-        (readback & XHCI_IMOD_INTERVAL_MASK) != interval) {
-        // Best-effort immediate rollback if verification does not match.
-        virtual_write_word(
-            intr_va + XHCI_IMOD, old_imod & XHCI_IMOD_INTERVAL_MASK);
-        status = STATUS_DATA_ERROR;
+        if (!NT_SUCCESS(verify_status) ||
+            (readback & XHCI_IMOD_INTERVAL_MASK) != interval) {
+            // Preserve the latest counter sample when available and restore
+            // the old interval after either a failed read or a mismatch.
+            new rollback_value = old_imod;
+            if (NT_SUCCESS(verify_status))
+                rollback_value = (readback & ~XHCI_IMOD_INTERVAL_MASK) |
+                    (old_imod & XHCI_IMOD_INTERVAL_MASK);
+
+            new NTSTATUS:rollback_status = virtual_write_dword(
+                intr_va + XHCI_IMOD, rollback_value);
+            if (!NT_SUCCESS(rollback_status))
+                status = rollback_status;
+            else if (!NT_SUCCESS(verify_status))
+                status = verify_status;
+            else
+                status = STATUS_DATA_ERROR;
+        }
     }
 
     out[0] = old_imod;

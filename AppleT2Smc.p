@@ -33,6 +33,7 @@
 //  and the module refuses to load rather than touching the wrong device.
 
 #include <pawnio.inc>
+#include <registry.inc>
 
 #define T2_SMC_PHYS         0xFE0B0000
 // Linux defines APPLESMC_IOMEM_MIN_SIZE as 0x4006; map exactly that so no
@@ -69,6 +70,43 @@
 #define SMC_MIN_LDKN        2
 
 new VA:g_smc_va = NULL;
+
+/// Compare two NUL-terminated codepoint strings.
+///
+/// @param str1 Unpacked string (one codepoint per cell)
+/// @param str2 Unpacked string (one codepoint per cell)
+/// @return 0 if equal, nonzero otherwise
+stock str_eq(const str1[], const str2[]) {
+    new i = 0;
+    while (str1[i] != 0) {
+        new c = str2[i];
+        if (c == 0)
+            return 1;
+        if (str1[i] != c)
+            return 1;
+        i++;
+    }
+    return str2[i] != 0 ? 1 : 0;
+}
+
+// Refuse to touch the window unless the firmware says this is an Apple machine.
+// The MMIO base below is a constant, so this is the check that keeps it from
+// being written on hardware where that address belongs to something else.
+// Same DMI route LedsValve.p uses.
+bool:is_apple_machine() {
+    if (!reg_resolve_imports())
+        return false;
+
+    new bios_path[] = ''\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS'';
+
+    new manufacturer[64];
+    new mfg_len = 0;
+    if (reg_query_sz(bios_path, ''SystemManufacturer'', manufacturer, sizeof manufacturer, mfg_len) != STATUS_SUCCESS)
+        return false;
+
+    return str_eq(manufacturer, ''Apple Inc.'') == 0;
+}
+
 
 // Wait until the SMC signals completion (status bit 0x20), with the same
 // exponential backoff as the Linux driver. Returns NTSTATUS.
@@ -267,6 +305,13 @@ NTSTATUS:main() {
     // narrows the set of systems on which the window below is touched at all.
     if (get_cpu_vendor() != CpuVendor_Intel)
         return STATUS_NOT_SUPPORTED;
+
+    // Read-only, and before anything is mapped: if the firmware does not say
+    // Apple, this address is not an SMC and we have no business there.
+    if (!is_apple_machine()) {
+        debug_print("AppleT2Smc: not an Apple machine, declining\n");
+        return STATUS_NOT_SUPPORTED;
+    }
 
     g_smc_va = io_space_map(T2_SMC_PHYS, T2_SMC_SIZE);
     if (g_smc_va == NULL)

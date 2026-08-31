@@ -267,7 +267,10 @@ NTSTATUS:read_reg(addr, &data) {
     new NTSTATUS:status = STATUS_SUCCESS;
     if ((addr & 0xFFFFF000) == SMU_MMIO_SENTINEL){
         // Read Mmio
-        status = virtual_read_dword(g_smu_mmio_va + (addr & 0xFFF), data);
+        new offset = addr & 0xFFF;
+        if ((offset & 0x3) != 0 || offset + 4 > PAGE_SIZE)
+            return STATUS_INVALID_PARAMETER;
+        status = virtual_read_dword(g_smu_mmio_va + offset, data);
         return status;
     }
 
@@ -283,7 +286,10 @@ NTSTATUS:write_reg(addr, data) {
     new NTSTATUS:status = STATUS_SUCCESS;
     if ((addr & 0xFFFFF000) == SMU_MMIO_SENTINEL){
         // Write Mmio
-        status = virtual_write_dword(g_smu_mmio_va + (addr & 0xFFF), data);
+        new offset = addr & 0xFFF;
+        if ((offset & 0x3) != 0 || offset + 4 > PAGE_SIZE)
+            return STATUS_INVALID_PARAMETER;
+        status = virtual_write_dword(g_smu_mmio_va + offset, data);
         return status;
     }
 

@@ -179,6 +179,12 @@ DEFINE_IOCTL(ioctl_ec_read_range) {
         data[i] = value;
     }
 
+    // METHOD_BUFFERED reuses one system buffer for input and output. Clear
+    // every output cell first so unused bytes in the final partial cell are
+    // deterministic zero rather than stale input data.
+    for (new i = 0; i < required_cells; i++)
+        out[i] = 0;
+
     pack_bytes_le(data, out, count);
     return STATUS_SUCCESS;
 }

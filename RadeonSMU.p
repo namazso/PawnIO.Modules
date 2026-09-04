@@ -18,7 +18,7 @@
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
 /*
- * RadeonSMU - SMU mailbox access for AMD Radeon (RDNA) GPUs.
+ * RadeonSMU - SMU mailbox access for AMD Radeon RDNA4 (Navi 4x) GPUs.
  *
  * Replaces WinRing0/InpOut32-style raw physical MMIO for AMD GPU tuning
  * software. Rather than handing out a physical read/write primitive, this
@@ -36,6 +36,10 @@
  * discrete card. `ioctl_get_bounds` lets the caller confirm which device
  * was chosen.
  *
+ * Discovery is read-only: the VRAM aperture size comes from the Resizable
+ * BAR capability (`rebar_current_size`), not a write-all-ones probe. Only
+ * Navi 4x is bound (`is_supported_gpu`), the one family this has run on.
+ *
  * Exposed surface
  * ---------------
  *   - SMN reads/writes restricted to the MP1 C2PMSG register file
@@ -45,8 +49,17 @@
  *     populates for TransferTableSmu2DramWithAddr.
  *   - One fixed-size read of the SmuMetrics_t DMA buffer, bounded to the
  *     GPU's own VRAM aperture.
- *   - Nothing else. No system RAM, no other devices, no writes to the
- *     framebuffer, and no SMN address outside the mailbox window.
+ *   - Nothing else. The module itself touches no system RAM, no other
+ *     device, and no SMN address outside the mailbox window, and it never
+ *     writes to the framebuffer.
+ *
+ * Two caveats, both shared with RyzenSMU. C2PMSG_80/81 are writable, so a
+ * caller can aim the firmware's own DMA anywhere via
+ * TransferTableSmu2DramWithAddr; that transfer is the SMU's, not ours, and
+ * no bound here applies to it. And PCIE_INDEX2/DATA2 is the same pair the
+ * AMD display driver uses (Linux: `adev->pcie_idx_lock`); we cannot take
+ * that lock, so callers should serialise via the
+ * "\BaseNamedObjects\Access_PCI" mutant.
  *
  * The mailbox window is deliberately not gated on message id: every
  * PPSMC message is a write of an id to the same MSG register, so
@@ -63,6 +76,9 @@
  *   - MP1 C2PMSG register numbering: `smu_v14_0.c` / `smu_v13_0.c`,
  *     `mmMP1_SMN_C2PMSG_66/82/90`.
  *   - Navi 4x SmuMetrics_t layout: `smu14_driver_if_v14_0.h`.
+ *   - Resizable BAR capability: PCI Express Base Specification, "Resizable
+ *     BAR Extended Capability"; Linux `drivers/pci/pci.c`
+ *     `pci_rebar_find_pos` / `pci_rebar_get_current_size`.
  */
 
 #include <pawnio.inc>
@@ -70,9 +86,55 @@
 /// PCI vendor id for AMD/ATI.
 const AMD_VENDOR_ID = 0x1002;
 
+/// PCI COMMAND register offset, and its memory-space decode bit.
+/// Mapping a BAR does not enable the endpoint's decoder, so a function
+/// with decode disabled would map "successfully" onto nothing.
+const PCI_CFG_COMMAND = 0x04;
+const PCI_COMMAND_MEMORY = 0x02;
+
+/* PCIe extended config space: 4 KB, capability chain starts at 0x100. A
+ * platform that cannot reach it fails the read rather than returning
+ * garbage (short HalGetBusDataByOffset -> STATUS_UNSUCCESSFUL). */
+const PCI_EXT_CFG_BASE = 0x100;
+const PCI_EXT_CFG_SIZE = 0x1000;
+/// Extended capability id of the Resizable BAR capability.
+const PCI_EXT_CAP_ID_REBAR = 0x0015;
+/// Bound on the capability chain walk; only has to terminate a bad chain.
+const PCI_EXT_CAP_MAX_HOPS = 64;
+
+/* Resizable BAR capability layout, relative to its header: header at 0,
+ * then one { capability, control } dword pair per resizable BAR. */
+const PCI_REBAR_CTRL = 0x08;          /* first control register       */
+const PCI_REBAR_ENTRY_STRIDE = 0x08;  /* bytes per { cap, ctrl } pair */
+const PCI_REBAR_CTRL_BAR_IDX = 0x07;  /* ctrl[2:0]  - BAR this describes  */
+const PCI_REBAR_CTRL_NBAR_SHIFT = 5;  /* ctrl[7:5]  - entry count (first) */
+const PCI_REBAR_CTRL_NBAR_MASK = 0x07;
+const PCI_REBAR_CTRL_SIZE_SHIFT = 8;  /* ctrl[13:8] - size, 2^(n+20) bytes */
+const PCI_REBAR_CTRL_SIZE_MASK = 0x3F;
+/// Largest size encoding acted on; 2^(42+20) stays clear of the sign bit.
+const PCI_REBAR_SIZE_ENCODING_MAX = 42;
+
+/* Navi 4x device id ranges, the only family this module has been run
+ * on. Navi 4x loads via CHIP_IP_DISCOVERY and has no explicit Linux
+ * entries; ids are from the Adrenalin INF (32.0.31041): Navi 48
+ * 0x7550/0x7551, Navi 44 0x7590. Family ranges rather than a per-SKU
+ * list, because the mailbox surface is identical within a family.
+ *
+ * Not admitted, untested here, for whoever widens this: Navi 2x from
+ * Linux amdgpu_drv.c is 0x73A0-0x73FF (Navi 21/22/23) and 0x7420-0x743F
+ * (Navi 24); 0x7408-0x7410 between them is Aldebaran (CDNA) and must
+ * stay out. Navi 3x from the same INF is 0x7448-0x745E, 0x7470/0x747E
+ * and 0x7480-0x7499. SMU_METRICS_DWORDS would also need to become
+ * per-family (41 on SMU11, 60/61 on SMU13). */
+const NAVI4X_DEVICE_ID_MIN_0 = 0x7550;
+const NAVI4X_DEVICE_ID_MAX_0 = 0x756F;
+const NAVI4X_DEVICE_ID_MIN_1 = 0x7590;
+const NAVI4X_DEVICE_ID_MAX_1 = 0x75AF;
+
 /// BAR5 offset of PCIE_INDEX2 - the SMN address (index) register.
 const SMN_INDEX_OFFSET = 0x38;
-/// BAR5 offset of PCIE_DATA2 - the SMN data register.
+/// BAR5 offset of PCIE_DATA2 - the SMN data register (the `va + 4` in
+/// smn_read/smn_write, which map the pair as one 8-byte window).
 const SMN_DATA_OFFSET = 0x3C;
 
 /// First SMN address of the MP1 C2PMSG register file (C2PMSG_0).
@@ -85,29 +147,88 @@ const MP1_C2PMSG_SPAN = 0x200;
 /// than caller-supplied so the output array is statically sized.
 const SMU_METRICS_DWORDS = 65;
 
-/* Fallback register-BAR window, used only if the BAR5 size probe returns
- * something implausible. The MMIO register BAR is ~512 KB on Navi 44;
- * 1 MB is a safe fallback that still stays inside adjacent MMIO. */
+/* Declared register-BAR map bound, not a measured size: the only register
+ * access is the 8-byte SMN pair at +0x38, so there is nothing to measure.
+ * Nvidia.p and IntelOOBMSM.p bound their mappings the same way. */
 const REG_SPAN = 0x100000;
-/// Sanity bound on the probed BAR5 size; larger is treated as a bad read.
-const REG_SIZE_MAX = 0x1000000;      /* 16 MB */
-/// Sanity bound on the probed BAR0 size; larger is treated as a bad read.
+/// Sanity bound on the ReBAR-reported BAR0 size; larger is a bad read.
 const VRAM_SIZE_MAX = 0x1000000000;  /* 64 GB */
 
 /* Discovered at load (main()). */
 new g_ready = 0;
-new g_reg_bar = 0;    /* BAR5 base - MMIO register aperture */
-new g_reg_size = 0;   /* BAR5 size (probed)                 */
-new g_vram_bar = 0;   /* BAR0 base - VRAM aperture          */
-new g_vram_size = 0;  /* BAR0 size (probed)                 */
+new g_reg_bar = 0;    /* BAR5 base - MMIO register aperture   */
+new g_reg_size = 0;   /* declared register map bound          */
+new g_vram_bar = 0;   /* BAR0 base - VRAM aperture            */
+new g_vram_size = 0;  /* BAR0 size, from the ReBAR capability */
 
 /* ---------------------------------------------------------------------
  * Discovery
  * ------------------------------------------------------------------- */
 
-/// Find the AMD VGA controller with the largest VRAM aperture, read its
-/// register and VRAM BAR bases, and probe both sizes. Sets g_ready on
-/// success. If it fails, `main()` refuses the load with STATUS_NOT_SUPPORTED.
+/// True iff `device_id` is a Navi 4x part. A security gate: on an AMD
+/// APU the allowlisted C2PMSG window is the *CPU's* SMU mailbox
+/// (RyzenSMU.p reaches 0x3B10A20/0x3B10A80/0x3B10A88 there, inside our
+/// window), so binding an iGPU would hand a caller the processor's SMU.
+bool: is_supported_gpu(device_id) {
+    if (device_id >= NAVI4X_DEVICE_ID_MIN_0 && device_id <= NAVI4X_DEVICE_ID_MAX_0) return true;
+    if (device_id >= NAVI4X_DEVICE_ID_MIN_1 && device_id <= NAVI4X_DEVICE_ID_MAX_1) return true;
+    return false;
+}
+
+/// Current size in bytes of `bar_index`, from the Resizable BAR capability.
+/// Replaces the write-all-ones probe, which relocates a live endpoint's
+/// decoder mid-scanout; Linux only does that with decode disabled and
+/// before a driver attaches (`__pci_read_base`). Fails with
+/// STATUS_NOT_FOUND when absent - the caller must skip, not guess, since
+/// this is the only bound on `ioctl_read_metrics`.
+NTSTATUS:rebar_current_size(bus, dev, bar_index, &size) {
+    size = 0;
+
+    new off = PCI_EXT_CFG_BASE;
+    for (new hop = 0; hop < PCI_EXT_CAP_MAX_HOPS; hop++) {
+        if (off < PCI_EXT_CFG_BASE || off > PCI_EXT_CFG_SIZE - 4) return STATUS_NOT_FOUND;
+
+        new hdr = 0;
+        new NTSTATUS:s = pci_config_read_dword(bus, dev, 0, off, hdr);
+        if (s != STATUS_SUCCESS) return s;
+        /* No extended config space, or a hole in the chain. */
+        if (hdr == 0 || (hdr & 0xFFFFFFFF) == 0xFFFFFFFF) return STATUS_NOT_FOUND;
+
+        if ((hdr & 0xFFFF) == PCI_EXT_CAP_ID_REBAR) {
+            /* The entry count lives in the first control register only. */
+            new ctrl0 = 0;
+            s = pci_config_read_dword(bus, dev, 0, off + PCI_REBAR_CTRL, ctrl0);
+            if (s != STATUS_SUCCESS) return s;
+            new entries = (ctrl0 >>> PCI_REBAR_CTRL_NBAR_SHIFT) & PCI_REBAR_CTRL_NBAR_MASK;
+            if (entries < 1 || entries > 6) return STATUS_NOT_FOUND;
+
+            for (new i = 0; i < entries; i++) {
+                new slot = off + PCI_REBAR_CTRL + i * PCI_REBAR_ENTRY_STRIDE;
+                if (slot > PCI_EXT_CFG_SIZE - 4) return STATUS_NOT_FOUND;
+
+                new ctrl = 0;
+                s = pci_config_read_dword(bus, dev, 0, slot, ctrl);
+                if (s != STATUS_SUCCESS) return s;
+                if ((ctrl & PCI_REBAR_CTRL_BAR_IDX) != bar_index) continue;
+
+                new enc = (ctrl >>> PCI_REBAR_CTRL_SIZE_SHIFT) & PCI_REBAR_CTRL_SIZE_MASK;
+                if (enc > PCI_REBAR_SIZE_ENCODING_MAX) return STATUS_NOT_SUPPORTED;
+                size = 1 << (enc + 20);
+                return STATUS_SUCCESS;
+            }
+            return STATUS_NOT_FOUND;
+        }
+
+        off = (hdr >>> 20) & 0xFFF;
+    }
+    return STATUS_NOT_FOUND;
+}
+
+/// Find the supported AMD VGA controller with the largest VRAM aperture
+/// and read its register and VRAM BAR bases. Sets g_ready on success. If
+/// it fails, `main()` refuses the load with STATUS_NOT_SUPPORTED.
+///
+/// Every config access here is a READ; nothing modifies the device.
 find_gpu_and_probe() {
     new best_bus = -1, best_dev = -1;
     new best_vram_bar = 0, best_vram_size = 0;
@@ -117,39 +238,40 @@ find_gpu_and_probe() {
             new vd = 0;
             if (pci_config_read_dword(bus, dev, 0, 0x00, vd) != STATUS_SUCCESS) continue;
             if ((vd & 0xFFFF) != AMD_VENDOR_ID) continue;
+            if (!is_supported_gpu((vd >>> 16) & 0xFFFF)) continue;
 
             new cls = 0;
             if (pci_config_read_dword(bus, dev, 0, 0x08, cls) != STATUS_SUCCESS) continue;
             if (((cls >> 24) & 0xFF) != 0x03) continue;   /* base class: display */
             if (((cls >> 16) & 0xFF) != 0x00) continue;   /* sub class:  VGA     */
 
+            /* The function must already be decoding memory. Mapping a BAR
+             * does not enable the endpoint decoder, and a function with
+             * decode off has no assigned base worth reading. */
+            new cmd = 0;
+            if (pci_config_read_word(bus, dev, 0, PCI_CFG_COMMAND, cmd) != STATUS_SUCCESS) continue;
+            if ((cmd & PCI_COMMAND_MEMORY) == 0) continue;
+
             /* VRAM BAR = BAR0. Validate the type bits before treating
              * 0x14 as the high half: on a 32-bit-BAR device that offset
              * is BAR1, and composing the two yields a garbage base. */
             new b0lo = 0, b0hi = 0;
-            pci_config_read_dword(bus, dev, 0, 0x10, b0lo);
+            if (pci_config_read_dword(bus, dev, 0, 0x10, b0lo) != STATUS_SUCCESS) continue;
             if ((b0lo & 0x1) != 0) continue;            /* I/O space  */
             if (((b0lo >> 1) & 0x3) != 0x2) continue;   /* not 64-bit */
-            pci_config_read_dword(bus, dev, 0, 0x14, b0hi);
-            new vram_bar = (b0hi << 32) | (b0lo & 0xFFFFFFF0);
+            /* An unchecked high read would leave b0hi = 0 and truncate an
+             * above-4G base to its low half. */
+            if (pci_config_read_dword(bus, dev, 0, 0x14, b0hi) != STATUS_SUCCESS) continue;
+            new vram_bar = ((b0hi & 0xFFFFFFFF) << 32) | (b0lo & 0xFFFFFFF0);
 
-            /* Standard write-all-ones / read-mask / restore size probe.
-             * Memory decode is not disabled (PCI config access is
-             * PASSIVE_LEVEL and cannot be IRQL-protected); each BAR is
-             * restored within a few microseconds. */
-            new mlo = 0, mhi = 0;
-            pci_config_write_dword(bus, dev, 0, 0x10, 0xFFFFFFFF);
-            pci_config_write_dword(bus, dev, 0, 0x14, 0xFFFFFFFF);
-            pci_config_read_dword(bus, dev, 0, 0x10, mlo);
-            pci_config_read_dword(bus, dev, 0, 0x14, mhi);
-            pci_config_write_dword(bus, dev, 0, 0x10, b0lo);
-            pci_config_write_dword(bus, dev, 0, 0x14, b0hi);
+            /* An UNASSIGNED BAR still reads its hardwired type bits (raw
+             * 0x0C) while the base masks to zero, which would aim every
+             * bounds check at low RAM. `<= 0`: in_window() needs base >= 0. */
+            if (vram_bar <= 0) continue;
 
-            new mask = (mhi << 32) | (mlo & 0xFFFFFFF0);
-            new vram_size = (~mask) + 1;
-
-            /* Fail closed on an implausible read-back: skip the device
-             * rather than let a bogus size win the ranking. */
+            /* No ReBAR capability -> skip, never guess (sole metrics bound). */
+            new vram_size = 0;
+            if (rebar_current_size(bus, dev, 0, vram_size) != STATUS_SUCCESS) continue;
             if (vram_size <= 0 || vram_size > VRAM_SIZE_MAX) continue;
 
             /* Tie-break toward the higher PCI bus, where a discrete card
@@ -167,28 +289,25 @@ find_gpu_and_probe() {
     if (best_bus < 0) return;   /* no AMD VGA device found */
 
     new b5 = 0;
-    pci_config_read_dword(best_bus, best_dev, 0, 0x24, b5);
+    /* Check the status: a failed read leaves b5 = 0, which would otherwise
+     * fall straight through the type checks below into a zero base. */
+    if (pci_config_read_dword(best_bus, best_dev, 0, 0x24, b5) != STATUS_SUCCESS)
+        return;
     if ((b5 & 0x1) != 0) return;                /* must be memory space */
-    new b5type = (b5 >> 1) & 0x3;
-    if (b5type != 0x0 && b5type != 0x2) return; /* reserved encoding    */
-    new b5hi = 0;
-    if (b5type == 0x2) pci_config_read_dword(best_bus, best_dev, 0, 0x28, b5hi);
-    new reg_bar = (b5hi << 32) | (b5 & 0xFFFFFFF0);
+    /* BAR5 must be 32-bit: 0x28 is the Cardbus CIS Pointer, not a BAR, so
+     * a 64-bit encoding at 0x24 means it is the high half of a 64-bit BAR4
+     * (whose address bits can read as 0b10), not BAR5. Refuse. */
+    if (((b5 >> 1) & 0x3) != 0x0) return;
+    new reg_bar = b5 & 0xFFFFFFF0;
 
-    new m5 = 0;
-    pci_config_write_dword(best_bus, best_dev, 0, 0x24, 0xFFFFFFFF);
-    pci_config_read_dword(best_bus, best_dev, 0, 0x24, m5);
-    pci_config_write_dword(best_bus, best_dev, 0, 0x24, b5);
-    m5 = m5 & 0xFFFFFFF0;
-    new reg_size = 0;
-    if (m5 != 0) reg_size = ((~m5) & 0xFFFFFFFF) + 1;
-    if (reg_size <= 0 || reg_size > REG_SIZE_MAX) reg_size = REG_SPAN;
-
-    /* The SMN index/data pair must fit inside the register aperture. */
-    if (reg_size < SMN_DATA_OFFSET + 4) return;
+    /* Same unassigned-BAR hazard as BAR0. A zero base would make
+     * g_reg_bar + SMN_INDEX_OFFSET resolve to physical 0x38 — a WRITE
+     * into low system RAM instead of the SMN index register. */
+    if (reg_bar <= 0)
+        return;
 
     g_reg_bar = reg_bar;
-    g_reg_size = reg_size;
+    g_reg_size = REG_SPAN;
     g_vram_bar = best_vram_bar;
     g_vram_size = best_vram_size;
     g_ready = 1;
@@ -205,6 +324,8 @@ find_gpu_and_probe() {
 /// return true. This never adds to pa: it checks `pa >= base` (which also
 /// rejects a negative pa), derives the offset by subtraction, and compares
 /// len against the remaining window, which cannot overflow.
+/// Requires base >= 0 (a negative base makes `pa - base` wrap), which is
+/// why discovery rejects non-positive apertures.
 bool: in_window(pa, len, base, size) {
     if (size <= 0) return false;
     if (len <= 0) return false;
@@ -326,7 +447,11 @@ DEFINE_IOCTL_SIZED(ioctl_read_metrics, 1, SMU_METRICS_DWORDS) {
     if (va == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     for (new i = 0; i < SMU_METRICS_DWORDS; i++) {
         new v = 0;
-        virtual_read_dword(va + i * 4, v);
+        new NTSTATUS:s = virtual_read_dword(va + i * 4, v);
+        if (s != STATUS_SUCCESS) {
+            io_space_unmap(va, len);
+            return s;
+        }
         out[i] = v & 0xFFFFFFFF;
     }
     io_space_unmap(va, len);

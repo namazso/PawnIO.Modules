@@ -50,6 +50,11 @@
 #define MSR_K7_PERFCTR0             (0xC0010004)
 #define MSR_K7_HWCR                 (0xC0010015)
 
+// [47:20] MmioCfgBaseAddr: MMIO configuration base address bits
+// [5:2] BusRange: bus range identifier
+// [0] Enable: 1=MMIO configuration space is enabled
+#define MSR_MMIO_CFG_BASE_ADDR      (0xC0010058)
+
 #define MSR_PSTATE_CURRENT_LIMIT    (0xC0010061)
 #define MSR_PSTATE_STATUS           (0xC0010063)
 #define MSR_PSTATE_0                (0xC0010064)
@@ -120,7 +125,8 @@ bool:is_allowed_msr_read(msr) {
              MSR_PWR_UNIT, MSR_CORE_ENERGY_STAT, MSR_PKG_ENERGY_STAT,
              MSR_AMD_CPPC_CAP1, MSR_AMD_CPPC_ENABLE, MSR_AMD_CPPC_CAP2,
              MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS,
-             MSR_LS_CFG, MSR_IC_CFG, MSR_DC_CFG, MSR_LS_CFG2:
+             MSR_LS_CFG, MSR_IC_CFG, MSR_DC_CFG, MSR_LS_CFG2,
+             MSR_MMIO_CFG_BASE_ADDR:
             return true;
         default:
             return false;
@@ -135,7 +141,8 @@ bool:is_allowed_msr_write(msr) {
              MSR_PSTATE_4, MSR_PSTATE_5, MSR_PSTATE_6, MSR_PSTATE_7,
              MSR_PMGT_MISC, MSR_CSTATE_CONFIG, MSR_AMD_CPPC_ENABLE,
              MSR_AMD_CPPC_REQ, MSR_AMD_CPPC_STATUS,
-             MSR_LS_CFG, MSR_IC_CFG, MSR_DC_CFG, MSR_LS_CFG2:
+             MSR_LS_CFG, MSR_IC_CFG, MSR_DC_CFG, MSR_LS_CFG2,
+             MSR_MMIO_CFG_BASE_ADDR:
             return true;
         default:
             return false;

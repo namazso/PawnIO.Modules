@@ -815,8 +815,9 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     if (read_write != I2C_SMBUS_READ && read_write != I2C_SMBUS_WRITE)
         return STATUS_INVALID_PARAMETER;
 
-    // Anything wider than 7 bits would silently alias a different slave
-    if (address < 0 || address > I2C_SMBUS_ADDR_MAX)
+    // Anything wider than 7 bits would silently alias a different slave.
+    // Address zero is the General Call broadcast, not a target device.
+    if (address <= 0 || address > I2C_SMBUS_ADDR_MAX)
         return STATUS_INVALID_PARAMETER;
 
     new NTSTATUS:status;

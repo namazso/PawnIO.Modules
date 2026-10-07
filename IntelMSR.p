@@ -39,7 +39,9 @@
 #define MSR_DRAM_PERF_STATUS		0x0000061b
 #define MSR_DRAM_POWER_INFO		0x0000061c
 
-#define MSR_UNC_PERF_GLOBAL_CTRL	0x00000620
+// Per Intel SDM Vol. 4, 0x620 is MSR_UNCORE_RATIO_LIMIT (uncore min/max ratio,
+// R/W); the uncore performance global control MSR is at 0x391.
+#define MSR_UNCORE_RATIO_LIMIT	0x00000620
 #define MSR_UNC_PERF_GLOBAL_STATUS	0x00000621
 
 #define MSR_PP0_POWER_LIMIT		0x00000638
@@ -52,6 +54,11 @@
 #define MSR_PP1_POLICY			0x00000642
 
 #define MSR_PLATFORM_ENERGY_STATUS	0x0000064D
+
+// Limit-reason telemetry (Intel SDM Vol. 4): indicator of frequency clipping
+// in the processor cores resp. in the ring/uncore domain.
+#define MSR_PERF_LIMIT_REASONS		0x0000064f
+#define MSR_RING_PERF_LIMIT_REASONS	0x000006b1
 
 #define MSR_RAPL_POWER_UNIT		0x00000606
 
@@ -76,10 +83,10 @@ bool:is_allowed_msr_read(msr) {
             MSR_IA32_THERM_STATUS, MSR_IA32_MPERF, MSR_IA32_APERF,
             MSR_VR_CURRENT_CONFIG, MSR_PKG_POWER_LIMIT, MSR_PKG_ENERGY_STATUS, MSR_PKG_PERF_STATUS, MSR_PKG_POWER_INFO,
             MSR_DRAM_POWER_LIMIT, MSR_DRAM_ENERGY_STATUS, MSR_DRAM_PERF_STATUS, MSR_DRAM_POWER_INFO,
-            MSR_UNC_PERF_GLOBAL_CTRL, MSR_UNC_PERF_GLOBAL_STATUS,
+            MSR_UNCORE_RATIO_LIMIT, MSR_UNC_PERF_GLOBAL_STATUS,
             MSR_PP0_POWER_LIMIT, MSR_PP0_ENERGY_STATUS, MSR_PP0_POLICY, MSR_PP0_PERF_STATUS,
             MSR_PP1_POWER_LIMIT, MSR_PP1_ENERGY_STATUS, MSR_PP1_POLICY,
-            MSR_PLATFORM_ENERGY_STATUS, MSR_RAPL_POWER_UNIT, MSR_PLATFORM_INFO,
+            MSR_PLATFORM_ENERGY_STATUS, MSR_PERF_LIMIT_REASONS, MSR_RING_PERF_LIMIT_REASONS, MSR_RAPL_POWER_UNIT, MSR_PLATFORM_INFO,
             MSR_EBL_CR_POWERON, MSR_TURBO_RATIO_LIMIT, MSR_SECONDARY_TURBO_RATIO_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA,
             MSR_MISC_FEATURE_CONTROL:
             return true;
@@ -89,10 +96,14 @@ bool:is_allowed_msr_read(msr) {
     return false;
 }
 
+// Ratio-limit MSRs (P-core turbo, secondary/E-core turbo, uncore) are writable
+// for CPU tuning; callers are expected to read-modify-write to preserve
+// unrelated bit fields.
 bool:is_allowed_msr_write(msr) {
     switch (msr) {
         case MSR_VR_CURRENT_CONFIG, MSR_PKG_POWER_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA,
-             MSR_MISC_FEATURE_CONTROL:
+             MSR_MISC_FEATURE_CONTROL,
+             MSR_TURBO_RATIO_LIMIT, MSR_SECONDARY_TURBO_RATIO_LIMIT, MSR_UNCORE_RATIO_LIMIT:
             return true;
         default:
             return false;

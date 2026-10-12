@@ -20,11 +20,18 @@
 //
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
-//  Protocol facts (REQ-039), sourced from the Linux prom21-xhci driver (v7,
-//  lore.kernel.org 20260519000732.2334711):
+//  Protocol facts (REQ-039), sourced from the Linux prom21-xhci driver and the
+//  final upstream match table (xhci-pci-prom21, kernel commit 29381088ac50,
+//  merged into usb-testing 2026-10-11):
 //  - The sensor lives behind AMD Promontory 21 xHCI controllers,
-//    PCI vendor 0x1022, device ids 0x43F7 (single-die Prom21, found on B650
-//    boards) and 0x43FC / 0x43FD (dual-die Prom21, matched by the kernel driver).
+//    PCI vendor 0x1022, device ids 0x43F7 (single-die Prom21, 600 series:
+//    B650/X670), 0x43F9 (B665) and 0x43FA (A620) (600 series, added upstream
+//    on AMD's suggestion), and 0x43FC / 0x43FD (dual-die Prom21, X870E).
+//  - Only the 0x43F7 protocol has been verified on real hardware (B650 board,
+//    cross-checked against Windows PnP). The remaining 600-series IDs are
+//    matched because those chipsets use the same Promontory 21 die; the
+//    module is read-only and fails soft, so an untested match degrades to a
+//    skipped or bogus reading rather than a fault.
 //  - On each controller's MMIO BAR0 there is a vendor-specific
 //    index/data register pair at offsets 0x3000 / 0x3008.
 //  - Write the temperature selector 0x0001E520 to the index register,
@@ -51,9 +58,11 @@
 
 #define PCI_VENDOR_ID_AMD 0x1022
 
-#define XHCI_DEVICE_0 0x43F7   // 单 die Prom21（B650 等常见 AM5 板型，本机实测）
-#define XHCI_DEVICE_1 0x43FC   // 双 die Prom21（X870E，Linux prom21-xhci v7 匹配）
-#define XHCI_DEVICE_2 0x43FD   // 双 die Prom21（X870E，Linux prom21-xhci v7 匹配）
+#define XHCI_DEVICE_0 0x43F7   // 单 die Prom21（600 系 B650/X670，本机实测）
+#define XHCI_DEVICE_1 0x43F9   // B665（600 系，AMD 建议，上游 29381088ac50 已收）
+#define XHCI_DEVICE_2 0x43FA   // A620（600 系，AMD 建议，上游 29381088ac50 已收）
+#define XHCI_DEVICE_3 0x43FC   // 双 die Prom21（X870E，Linux prom21-xhci v7 匹配）
+#define XHCI_DEVICE_4 0x43FD   // 双 die Prom21（X870E，Linux prom21-xhci v7 匹配）
 
 // Board-dependent: single-die boards expose one xHCI, dual-die (X870E) two.
 // Four slots leave headroom for hybrid board layouts at zero memory cost.
@@ -80,6 +89,18 @@
 new g_bar[MAX_CONTROLLERS];
 new VA:g_va[MAX_CONTROLLERS];
 new g_count = 0;
+
+// Final upstream match table (xhci-pci-prom21, kernel commit 29381088ac50):
+// 0x43F7 / 0x43F9 / 0x43FA for the 600 series, 0x43FC / 0x43FD for the
+// dual-die 800 series. See the header comment for verification status.
+bool:is_prom21_xhci(device_id) {
+    switch (device_id) {
+        case XHCI_DEVICE_0, XHCI_DEVICE_1, XHCI_DEVICE_2,
+             XHCI_DEVICE_3, XHCI_DEVICE_4:
+            return true;
+    }
+    return false;
+}
 
 // Read the 64-bit memory base address of a BAR0 (offset 0x10, upper half at
 // 0x14 only when the BAR declares itself 64-bit).
@@ -122,7 +143,7 @@ NTSTATUS:scan_controllers() {
                 if ((vid_did & 0xFFFF) != PCI_VENDOR_ID_AMD)
                     continue;
                 new device_id = (vid_did >>> 16) & 0xFFFF;
-                if (device_id != XHCI_DEVICE_0 && device_id != XHCI_DEVICE_1 && device_id != XHCI_DEVICE_2)
+                if (!is_prom21_xhci(device_id))
                     continue;
 
                 new addr = 0;

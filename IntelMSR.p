@@ -123,6 +123,10 @@ DEFINE_IOCTL_SIZED(ioctl_read_msr, 1, 1) {
 
 /// Write MSR.
 ///
+/// Allows OC/VR mailbox (0x150/0x601/0x607/0x608/0x610) and prefetcher
+/// control (0x1A4) with arbitrary values by design for tuning tools.
+/// Requires admin to load/use module. Do not expose to untrusted callers.
+///
 /// @param in [0] = MSR, [1] = Value
 /// @param in_size Must be 2
 /// @param out_size Must be 0

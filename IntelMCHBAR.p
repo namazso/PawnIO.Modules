@@ -224,7 +224,7 @@ NTSTATUS:mchbar_init(CodeName:code_name) {
 DEFINE_IOCTL_SIZED(ioctl_read_dword, 1, 1) {
     new offset = in[0];
 
-    if (offset < 0 || offset >= g_mchbar_size)
+    if (offset < 0 || offset + 4 > g_mchbar_size)
         return STATUS_ACCESS_DENIED;
     if (offset & 0x3)
         return STATUS_ACCESS_DENIED;
@@ -246,7 +246,7 @@ DEFINE_IOCTL_SIZED(ioctl_read_dword, 1, 1) {
 DEFINE_IOCTL_SIZED(ioctl_read_qword, 1, 1) {
     new offset = in[0];
 
-    if (offset < 0 || offset >= g_mchbar_size)
+    if (offset < 0 || offset + 8 > g_mchbar_size)
         return STATUS_ACCESS_DENIED;
     if (offset & 0x7)
         return STATUS_ACCESS_DENIED;

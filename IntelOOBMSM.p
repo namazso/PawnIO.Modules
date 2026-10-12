@@ -183,7 +183,7 @@ DEFINE_IOCTL_SIZED(ioctl_pci_config_read_dword, 1, 1) {
 /// @return An NTSTATUS
 DEFINE_IOCTL_SIZED(ioctl_read_dword, 1, 1) {
     new offset = in[0];
-    if (offset < 0 || offset >= g_bar_size)
+    if (offset < 0 || offset + 4 > g_bar_size)
         return STATUS_ACCESS_DENIED;
     if (offset & 0x3)
         return STATUS_ACCESS_DENIED;

@@ -18,6 +18,7 @@
 //  SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include <pawnio.inc>
+#include <registry.inc>
 
 stock mask64on32(in, mask) {
     return (in & (mask >> 32)) | (mask & 0xFFFFFFFF);
@@ -53,6 +54,8 @@ const MMIOState: {
     MMIO_Enabled2E = 1,
     MMIO_Enabled4E = 2
 };
+
+forward NTSTATUS:set_state(MMIOState:mmio_state);
 
 superio_enter(ioreg) {
     io_out_byte(ioreg, 0x87);
@@ -352,6 +355,13 @@ DEFINE_IOCTL_SIZED(ioctl_access_superio_mmio, 5, 1) {
         size = g_mapped_2_size;
     }
 
+    // Only one ISA bridge MMIO window is active at a time.  Select the
+    // requested Super I/O slot immediately before touching its mapping.
+    new NTSTATUS:status = set_state(
+        slot == 0 ? MMIO_Enabled2E : MMIO_Enabled4E);
+    if (!NT_SUCCESS(status))
+        return status;
+
     return access_memory(base, size, offset, access_size, access_type, value, out[0]);
 }
 
@@ -378,11 +388,10 @@ NTSTATUS:amd_get_config(out[AmdConfig]) {
 }
 
 NTSTATUS:amd_set_config(in[AmdConfig]) {
-    new NTSTATUS:status = STATUS_SUCCESS;
-    status = pci_config_write_dword(0x0, 0x14, 0x3, 0x48, in.IoMemPortDecodeEnable);
-    if (!NT_SUCCESS(status))
-        return status;
+    new NTSTATUS:status;
+    new verify;
 
+    // Program the range before enabling its decode.
     status = pci_config_write_dword(0x0, 0x14, 0x3, 0x60, in.PCIMemoryStartAddressForLpc);
     if (!NT_SUCCESS(status))
         return status;
@@ -390,7 +399,30 @@ NTSTATUS:amd_set_config(in[AmdConfig]) {
     status = pci_config_write_dword(0x0, 0x14, 0x3, 0x6C, in.ROMAddressRange2);
     if (!NT_SUCCESS(status))
         return status;
-    return status;
+
+    status = pci_config_write_dword(0x0, 0x14, 0x3, 0x48, in.IoMemPortDecodeEnable);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = pci_config_read_dword(0x0, 0x14, 0x3, 0x60, verify);
+    if (!NT_SUCCESS(status))
+        return status;
+    if (verify != in.PCIMemoryStartAddressForLpc)
+        return STATUS_UNSUCCESSFUL;
+
+    status = pci_config_read_dword(0x0, 0x14, 0x3, 0x6C, verify);
+    if (!NT_SUCCESS(status))
+        return status;
+    if (verify != in.ROMAddressRange2)
+        return STATUS_UNSUCCESSFUL;
+
+    status = pci_config_read_dword(0x0, 0x14, 0x3, 0x48, verify);
+    if (!NT_SUCCESS(status))
+        return status;
+    if (verify != in.IoMemPortDecodeEnable)
+        return STATUS_UNSUCCESSFUL;
+
+    return STATUS_SUCCESS;
 }
 
 amd_config_make_mask(out_mask[AmdConfig], slot, mmio_base, bool:enabled) {
@@ -509,30 +541,29 @@ NTSTATUS:amd_set_state(MMIOState:mmio_state) {
     if (!NT_SUCCESS(status))
         return status;
 
-    new config[AmdConfig];
-    status = amd_get_config(config);
-    if (!NT_SUCCESS(status))
-        return status;
-
     new target[AmdConfig];
     if (mmio_state == MMIO_Disabled) {
         amd_config_make_mask(target, 0, 0, false);
-        amd_config_apply_mask(target, config, target);
+        amd_config_apply_mask(target, g_amd_original_config, target);
     } else if (mmio_state == MMIO_Enabled2E) {
         if (g_superio_base == 0)
             return STATUS_INVALID_PARAMETER;
         amd_config_make_mask(target, 0, g_superio_base, true);
-        amd_config_apply_mask(target, config, target);
+        amd_config_apply_mask(target, g_amd_original_config, target);
     } else if (mmio_state == MMIO_Enabled4E) {
         if (g_superio_2_base == 0)
             return STATUS_INVALID_PARAMETER;
         amd_config_make_mask(target, 1, g_superio_2_base, true);
-        amd_config_apply_mask(target, config, target);
+        amd_config_apply_mask(target, g_amd_original_config, target);
     } else {
         return STATUS_INVALID_PARAMETER;
     }
 
     status = amd_set_config(target);
+    if (!NT_SUCCESS(status)) {
+        amd_restore_config();
+        return status;
+    }
     if (NT_SUCCESS(status) && !amd_config_is_equal(target, g_amd_original_config))
         g_amd_should_restore = true;
     return status;
@@ -566,6 +597,226 @@ NTSTATUS:amd_test_support() {
 // Intel stuff
 // =============================================
 
+#define GIGABYTE_SMI_SIV                0xB364
+#define GIGABYTE_SMI_PORT               0xB2
+
+#define INTEL_HIDDEN_OFS_SKYLAKE        0x00EF2700
+#define INTEL_HIDDEN_OFS_Z390           0x00882700
+#define INTEL_HIDDEN_BASE_Z390_FALLBACK 0xFD882700
+
+const IntelBridgeType: {
+    IntelBridge_Generic = 0,
+    IntelBridge_Skylake = 1,
+    IntelBridge_Z390 = 2
+};
+
+new IntelBridgeType:g_intel_bridge_type = IntelBridge_Generic;
+new g_intel_hidden_base = 0;
+new VA:g_intel_hidden_map = NULL;
+new g_intel_hidden_orig_40 = 0;
+new g_intel_hidden_orig_44 = 0;
+new bool:g_intel_hidden_saved = false;
+new bool:g_intel_hidden_initialized = false;
+
+stock bool:str_equal(const lhs[], const rhs[]) {
+    new i = 0;
+    while (lhs[i] != 0) {
+        if (rhs[i] == 0 || lhs[i] != rhs[i])
+            return false;
+        i++;
+    }
+    return rhs[i] == 0;
+}
+
+bool:gigabyte_dmi_match() {
+    new bios_path[] = ''\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS'';
+    new board_vendor[64];
+    new board_vendor_len = 0;
+
+    if (reg_query_sz(
+            bios_path,
+            ''BaseBoardManufacturer'',
+            board_vendor,
+            sizeof board_vendor,
+            board_vendor_len) != STATUS_SUCCESS)
+        return false;
+
+    return str_equal(board_vendor, ''Gigabyte Technology Co., Ltd.'');
+}
+
+/*
+ * Query the Gigabyte SIV using PawnIO's low-level SMI native.
+ *
+ * Register convention, shared with GigabyteID.p:
+ *   RAX = 0xB364
+ *   RDX = 0xB2
+ *   returned status = RAX
+ *   returned SIV    = low 32 bits of RBX
+ */
+NTSTATUS:gigabyte_get_siv(&siv) {
+    new regs[16];
+
+    for (new i = 0; i < 16; i++)
+        regs[i] = 0;
+
+    regs[0] = GIGABYTE_SMI_SIV;
+    regs[2] = GIGABYTE_SMI_PORT;
+
+    // Preserve the current RFLAGS value.
+    smi(regs, -1, 0);
+
+    if (regs[0] != 0)
+        return STATUS_UNSUCCESSFUL;
+
+    siv = regs[3] & 0xFFFFFFFF;
+
+    // Reject empty SIV values and values without a platform identifier.
+    if (siv == 0 || ((siv >> 28) & 0xF) == 0)
+        return STATUS_NOT_SUPPORTED;
+
+    return STATUS_SUCCESS;
+}
+
+intel_cpu_model() {
+    new regs[4];
+    cpuid(1, 0, regs);
+
+    new eax = regs[0];
+    new family = (eax >> 8) & 0xF;
+    new model = (eax >> 4) & 0xF;
+
+    if (family == 0xF)
+        family += (eax >> 20) & 0xFF;
+    if (family == 0x6 || family == 0xF)
+        model |= ((eax >> 16) & 0xF) << 4;
+
+    return family == 0x6 ? model : -1;
+}
+
+bool:intel_cpu_is_skl_kbl_cfl_family() {
+    switch (intel_cpu_model()) {
+        case 0x4E, 0x5E, 0x55, 0x8E, 0x9E:
+            return true;
+    }
+    return false;
+}
+
+NTSTATUS:intel_hidden_init() {
+    if (g_intel_hidden_initialized)
+        return STATUS_SUCCESS;
+
+    new hidden_ofs = 0;
+    new siv = 0;
+    new platform = 0;
+
+    /*
+     * Only issue the Gigabyte vendor SMI on Gigabyte motherboards.
+     * If SIV retrieval fails, the CPU-family fallback below still applies.
+     */
+    if (gigabyte_dmi_match()) {
+        new NTSTATUS:siv_status = gigabyte_get_siv(siv);
+        if (NT_SUCCESS(siv_status)) {
+            platform = (siv >> 28) & 0xF;
+            debug_print("Gigabyte SIV=0x%X platform=%u\n", siv, platform);
+        }
+    }
+
+    /*
+     * SIV platform IDs 4 and 6 select the Z390 DMI/PCR
+     * layout. Otherwise it falls back to the Skylake/Kaby/Coffee CPU family.
+     */
+    if (platform == 4 || platform == 6) {
+        g_intel_bridge_type = IntelBridge_Z390;
+        hidden_ofs = INTEL_HIDDEN_OFS_Z390;
+    } else if (intel_cpu_is_skl_kbl_cfl_family()) {
+        g_intel_bridge_type = IntelBridge_Skylake;
+        hidden_ofs = INTEL_HIDDEN_OFS_SKYLAKE;
+    } else {
+        g_intel_bridge_type = IntelBridge_Generic;
+        g_intel_hidden_initialized = true;
+        return STATUS_SUCCESS;
+    }
+
+    /*
+     * P2SB lives at 00:1f.1. Temporarily set its E1 visibility control to
+     * 0x10, read BAR0, then restore E1 exactly.
+     */
+    new e1 = 0;
+    new NTSTATUS:status = pci_config_read_byte(0, 0x1F, 1, 0xE1, e1);
+    if (!NT_SUCCESS(status)) {
+        if (g_intel_bridge_type == IntelBridge_Z390) {
+            g_intel_hidden_base = INTEL_HIDDEN_BASE_Z390_FALLBACK;
+            status = STATUS_SUCCESS;
+        } else {
+            return status;
+        }
+    } else {
+        new bool:e1_changed = false;
+
+        if (e1 != 0x10) {
+            status = pci_config_write_byte(0, 0x1F, 1, 0xE1, 0x10);
+            if (!NT_SUCCESS(status))
+                return status;
+            microsleep(1000);
+            e1_changed = true;
+        }
+
+        new bar0 = 0;
+        status = pci_config_read_dword(0, 0x1F, 1, 0x10, bar0);
+        if (NT_SUCCESS(status) && bar0 != 0 && bar0 != 0xFFFFFFFF) {
+            g_intel_hidden_base = (bar0 & 0xFF000000) + hidden_ofs;
+        } else if (g_intel_bridge_type == IntelBridge_Z390) {
+            g_intel_hidden_base = INTEL_HIDDEN_BASE_Z390_FALLBACK;
+            status = STATUS_SUCCESS;
+        }
+
+        if (e1_changed) {
+            new NTSTATUS:restore_status =
+                pci_config_write_byte(0, 0x1F, 1, 0xE1, e1);
+            microsleep(1000);
+            if (!NT_SUCCESS(restore_status)) {
+                g_intel_hidden_base = 0;
+                return restore_status;
+            }
+        }
+
+        if (!NT_SUCCESS(status))
+            return status;
+    }
+
+    if (g_intel_hidden_base == 0)
+        return STATUS_NOT_SUPPORTED;
+
+    g_intel_hidden_map = io_space_map(g_intel_hidden_base, 0x200);
+    if (g_intel_hidden_map == NULL) {
+        g_intel_hidden_base = 0;
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    g_intel_hidden_initialized = true;
+    debug_print("Intel hidden bridge mirror: type=%u base=0x%X\n",
+                _:g_intel_bridge_type, g_intel_hidden_base);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS:intel_hidden_save() {
+    if (g_intel_hidden_map == NULL || g_intel_hidden_saved)
+        return STATUS_SUCCESS;
+
+    new NTSTATUS:status =
+        virtual_read_dword(g_intel_hidden_map + 0x40, g_intel_hidden_orig_40);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status =
+        virtual_read_dword(g_intel_hidden_map + 0x44, g_intel_hidden_orig_44);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    g_intel_hidden_saved = true;
+    return STATUS_SUCCESS;
+}
+
 #define IntelConfig [.BIOSDecodeEnable, .LPCGenericMemoryRange]
 
 NTSTATUS:intel_get_config(out[IntelConfig]) {
@@ -581,7 +832,37 @@ NTSTATUS:intel_get_config(out[IntelConfig]) {
 }
 
 NTSTATUS:intel_set_config(in[IntelConfig]) {
-    new NTSTATUS:status = STATUS_SUCCESS;
+    new NTSTATUS:status;
+    new verify = 0;
+
+    /*
+     * On affected Intel PCH generations the public bridge registers have
+     * private DMI/PCR mirrors. Update and verify the mirrors first.
+     */
+    if (g_intel_hidden_map != NULL) {
+        status = virtual_write_dword(
+            g_intel_hidden_map + 0x40, in.LPCGenericMemoryRange);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        status = virtual_write_dword(
+            g_intel_hidden_map + 0x44, in.BIOSDecodeEnable);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        status = virtual_read_dword(g_intel_hidden_map + 0x40, verify);
+        if (!NT_SUCCESS(status))
+            return status;
+        if (verify != in.LPCGenericMemoryRange)
+            return STATUS_UNSUCCESSFUL;
+
+        status = virtual_read_dword(g_intel_hidden_map + 0x44, verify);
+        if (!NT_SUCCESS(status))
+            return status;
+        if (verify != in.BIOSDecodeEnable)
+            return STATUS_UNSUCCESSFUL;
+    }
+
     status = pci_config_write_dword(0x0, 0x1F, 0x0, 0xD8, in.BIOSDecodeEnable);
     if (!NT_SUCCESS(status))
         return status;
@@ -589,7 +870,20 @@ NTSTATUS:intel_set_config(in[IntelConfig]) {
     status = pci_config_write_dword(0x0, 0x1F, 0x0, 0x98, in.LPCGenericMemoryRange);
     if (!NT_SUCCESS(status))
         return status;
-    return status;
+
+    status = pci_config_read_dword(0x0, 0x1F, 0x0, 0xD8, verify);
+    if (!NT_SUCCESS(status))
+        return status;
+    if (verify != in.BIOSDecodeEnable)
+        return STATUS_UNSUCCESSFUL;
+
+    status = pci_config_read_dword(0x0, 0x1F, 0x0, 0x98, verify);
+    if (!NT_SUCCESS(status))
+        return status;
+    if (verify != in.LPCGenericMemoryRange)
+        return STATUS_UNSUCCESSFUL;
+
+    return STATUS_SUCCESS;
 }
 
 intel_bios_mask_for_data_space(base) {
@@ -652,17 +946,18 @@ intel_bios_mask_for_feat_space(base) {
     return 0;
 }
 
-intel_config_make_mask(out_mask[IntelConfig], slot, mmio_base, bool:enabled) {
+bool:intel_config_make_mask(out_mask[IntelConfig], slot, mmio_base, bool:enabled) {
     if (!enabled) {
         out_mask.BIOSDecodeEnable = 0xFFFFFFFF00000001;
         out_mask.LPCGenericMemoryRange = 0xFFFFFFFF00000000;
-        return;
+        return true;
     }
     if (slot == 0) {
         // 2E/2F
         new pciAddressStart = (mmio_base >> 16) & 0xFFFF;
         out_mask.BIOSDecodeEnable = 0xFFFFFFFE00000000;
         out_mask.LPCGenericMemoryRange = (pciAddressStart << 16) | 1;
+        return true;
     } else {
         // 4E/4F
         new pciAddressStart = (mmio_base >> 16) & 0xFFFF;
@@ -670,9 +965,10 @@ intel_config_make_mask(out_mask[IntelConfig], slot, mmio_base, bool:enabled) {
         if (mask == 0)
             mask = intel_bios_mask_for_feat_space(mmio_base);
         if (mask == 0)
-            mask = 0x0001;
+            return false;
         out_mask.BIOSDecodeEnable = ~mask << 32;
         out_mask.LPCGenericMemoryRange = (pciAddressStart << 16) | 1;
+        return true;
     }
 }
 
@@ -694,7 +990,8 @@ bool:intel_config_test_mask(in[IntelConfig], in_mask[IntelConfig]) {
 
 bool:intel_config_is_enabled(in[IntelConfig], slot, mmio_base) {
     new mask[IntelConfig];
-    intel_config_make_mask(mask, slot, mmio_base, true);
+    if (!intel_config_make_mask(mask, slot, mmio_base, true))
+        return false;
     return intel_config_test_mask(in, mask);
 }
 
@@ -723,19 +1020,67 @@ new bool:g_intel_should_restore = false;
 NTSTATUS:intel_ensure_config_saved() {
     if (g_intel_original_config_saved)
         return STATUS_SUCCESS;
-    new NTSTATUS:status = intel_get_config(g_intel_original_config);
-    if (NT_SUCCESS(status))
-        g_intel_original_config_saved = true;
-    return status;
+
+    new NTSTATUS:status;
+
+    if (!g_intel_hidden_initialized) {
+        status = intel_hidden_init();
+        if (!NT_SUCCESS(status))
+            return status;
+    }
+
+    status = intel_get_config(g_intel_original_config);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = intel_hidden_save();
+    if (!NT_SUCCESS(status))
+        return status;
+
+    g_intel_original_config_saved = true;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS:intel_restore_config() {
     if (!g_intel_original_config_saved)
         return STATUS_SUCCESS;
-    new NTSTATUS:status = intel_set_config(g_intel_original_config);
-    if (NT_SUCCESS(status))
-        g_intel_should_restore = false;
-    return status;
+
+    new NTSTATUS:status = STATUS_SUCCESS;
+
+    /*
+     * Restore the private mirror to the exact values observed on entry,
+     * rather than assuming it originally matched the public bridge.
+     */
+    if (g_intel_hidden_map != NULL && g_intel_hidden_saved) {
+        status = virtual_write_dword(
+            g_intel_hidden_map + 0x40, g_intel_hidden_orig_40);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        status = virtual_write_dword(
+            g_intel_hidden_map + 0x44, g_intel_hidden_orig_44);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        // Flush posted MMIO writes before restoring the public registers.
+        new flush = 0;
+        status = virtual_read_dword(g_intel_hidden_map + 0x44, flush);
+        if (!NT_SUCCESS(status))
+            return status;
+    }
+
+    status = pci_config_write_dword(
+        0x0, 0x1F, 0x0, 0xD8, g_intel_original_config.BIOSDecodeEnable);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = pci_config_write_dword(
+        0x0, 0x1F, 0x0, 0x98, g_intel_original_config.LPCGenericMemoryRange);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    g_intel_should_restore = false;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS:intel_get_original_state(&MMIOState:mmio_state) {
@@ -765,33 +1110,38 @@ NTSTATUS:intel_set_state(MMIOState:mmio_state) {
     if (!NT_SUCCESS(status))
         return status;
 
-    new config[IntelConfig];
-    status = intel_get_config(config);
-    if (!NT_SUCCESS(status))
-        return status;
-
     new target[IntelConfig];
     if (mmio_state == MMIO_Disabled) {
-        intel_config_make_mask(target, 0, 0, false);
-        intel_config_apply_mask(target, config, target);
+        if (!intel_config_make_mask(target, 0, 0, false))
+            return STATUS_INVALID_PARAMETER;
+        intel_config_apply_mask(target, g_intel_original_config, target);
     } else if (mmio_state == MMIO_Enabled2E) {
         if (g_superio_base == 0)
             return STATUS_INVALID_PARAMETER;
-        intel_config_make_mask(target, 0, g_superio_base, true);
-        intel_config_apply_mask(target, config, target);
+        if (!intel_config_make_mask(target, 0, g_superio_base, true))
+            return STATUS_INVALID_PARAMETER;
+        intel_config_apply_mask(target, g_intel_original_config, target);
     } else if (mmio_state == MMIO_Enabled4E) {
         if (g_superio_2_base == 0)
             return STATUS_INVALID_PARAMETER;
-        intel_config_make_mask(target, 1, g_superio_2_base, true);
-        intel_config_apply_mask(target, config, target);
+        if (!intel_config_make_mask(target, 1, g_superio_2_base, true))
+            return STATUS_INVALID_PARAMETER;
+        intel_config_apply_mask(target, g_intel_original_config, target);
     } else {
         return STATUS_INVALID_PARAMETER;
     }
 
     status = intel_set_config(target);
-    if (NT_SUCCESS(status) && !intel_config_is_equal(target, g_intel_original_config))
-        g_intel_should_restore = true;
-    return status;
+    if (!NT_SUCCESS(status)) {
+        intel_restore_config();
+        return status;
+    }
+    /*
+     * The private PCR mirror may have changed even when the public target
+     * happens to equal the saved public values, so always restore on unload.
+     */
+    g_intel_should_restore = true;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS:intel_test_support() {
@@ -908,5 +1258,12 @@ public NTSTATUS:unload() {
     // Ignore result
     restore_config_if_needed();
     unmap_superio_mmio();
+
+    if (g_intel_hidden_map != NULL) {
+        io_space_unmap(g_intel_hidden_map, 0x200);
+        g_intel_hidden_map = NULL;
+        g_intel_hidden_base = 0;
+    }
+
     return STATUS_SUCCESS;
 }

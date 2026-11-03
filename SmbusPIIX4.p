@@ -633,7 +633,7 @@ DEFINE_IOCTL_SIZED(ioctl_clock_freq, 1, 1) {
 /// @param out_size Must be between 0 and 5
 /// @return An NTSTATUS
 /// @warning You should acquire the "\BaseNamedObjects\Access_SMBUS.HTP.Method" mutant before calling this
-DEFINE_IOCTL(ioctl_smbus_xfer) {
+NTSTATUS:smbus_xfer_impl(in[], in_size, out[], out_size, bool:require_pre_enabled) {
     if (in_size < 4)
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -665,6 +665,9 @@ DEFINE_IOCTL(ioctl_smbus_xfer) {
     //PCI CMD IO not enabled
     if (0 == (pci_cmd_original & PCICMD_IOBIT))
     {
+        // New observed API never enables PCI decoding; legacy behavior is unchanged.
+        if (require_pre_enabled)
+            return STATUS_DEVICE_NOT_READY;
         //Enable it for the duration of this call
         status = pci_config_write_word(PIIX4_PCI_BUS, PIIX4_PCI_DEVICE, PIIX4_PCI_FUNCTION, PCICMD, pci_cmd_original | PCICMD_IOBIT);
         if (!NT_SUCCESS(status))
@@ -759,6 +762,17 @@ getout:
 
     return status;
 }
+
+// Preserve the legacy ABI; CloudMatrix must not use it for the observed path.
+DEFINE_IOCTL(ioctl_smbus_xfer) {
+    return smbus_xfer_impl(in, in_size, out, out_size, false);
+}
+
+#define OBSERVED_PCI_BUS PIIX4_PCI_BUS
+#define OBSERVED_PCI_DEVICE PIIX4_PCI_DEVICE
+#define OBSERVED_PCI_FUNCTION PIIX4_PCI_FUNCTION
+#define OBSERVED_PCI_MASK PCICMD_IOBIT
+#include "pre_enabled.inc"
 
 NTSTATUS:main() {
     if (get_arch() != ARCH_X64)

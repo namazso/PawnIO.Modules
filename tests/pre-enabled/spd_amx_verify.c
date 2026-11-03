@@ -184,7 +184,7 @@ static void run(const char *path,int which,int malformed) {
             which!=DUAL_ERR && which!=ID_CHANGED && which!=CMD_CHANGED && which!=BOTH_POST_ERR && which!=BUS_DUAL_ERR));
         REQUIRE(id_reads==(flags==31?2:1) && cmd_reads==(flags==31?3:flags==3?1:0));
         REQUIRE(out[15]==(out[9]==0?5:0));
-        if(out[9]==0) REQUIRE(out[16]==0x5a && starts==1);
+        if(out[9]==0) { REQUIRE(out[16]==0x5a && starts==1); for(i=17;i<21;++i) REQUIRE(out[i]==0); }
         else { REQUIRE(starts==(which==BUS_ERR || which==BUS_DUAL_ERR?1:0)); for(i=16;i<21;++i) REQUIRE(out[i]==0); }
     }
     printf("PASS scenario=%d malformed=%d flags=%lld pci_writes=%d starts=%d\n",which,malformed,(long long)out[4],pci_writes,starts);

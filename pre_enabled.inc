@@ -74,6 +74,8 @@ DEFINE_IOCTL_SIZED(ioctl_xfer_pre_enabled, 14, 21) {
     new result[5];
     for (new i; i < 9; i++)
         request[i] = in[5 + i];
+    for (new i; i < 5; i++)
+        result[i] = 0;
     out[4] |= 4;
     new NTSTATUS:primary = smbus_xfer_impl(request, in[4], result, 5, true);
     out[9] = _:primary;

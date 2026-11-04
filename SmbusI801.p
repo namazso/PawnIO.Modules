@@ -1010,6 +1010,8 @@ getout:
     return status;
 }
 
+#include "SmbusI801StartupRecovery.inc"
+
 NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
@@ -1022,3 +1024,4 @@ public NTSTATUS:unload() {
         io_space_unmap(i801_smba, SMBMBAR_SIZE);
     return STATUS_SUCCESS;
 }
+

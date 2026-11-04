@@ -1,0 +1,48 @@
+name: i801 recovery RFC - offline validation
+on:
+  push:
+    branches: [rfc/i801-startup-recovery]
+  pull_request:
+    paths:
+      - 'SmbusI801.p'
+      - 'SmbusI801StartupRecovery.inc'
+      - 'tests/i801_startup_recovery/**'
+      - '.github/workflows/i801-startup-recovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  model-tests:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fake register and mutation tests
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if errorlevel 1 exit /b 1
+          python tests/i801_startup_recovery/run_tests.py --cl cl.exe
+          if errorlevel 1 exit /b 1
+  pawn-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: oraclelinux:9
+    steps:
+      - name: Install build prerequisites
+        run: dnf install -yq git python3
+      - uses: actions/checkout@v4
+      - name: Install upstream Pawn compiler
+        run: dnf install -yq _pawn/pawn-4.1.7152-1.el9.x86_64.rpm
+      - name: Compile actual module without loading it
+        run: python3 tests/i801_startup_recovery/build_module.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: i801-RFC-build-NOT-FOR-INSTALLATION
+          path: |
+            tests/i801_startup_recovery/build/pawn/compiler.txt
+            tests/i801_startup_recovery/build/pawn/result.json
+            tests/i801_startup_recovery/build/pawn/SmbusI801.amx
+          if-no-files-found: error

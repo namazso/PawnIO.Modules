@@ -27,7 +27,11 @@ def main():
     data = (BUILD / 'SmbusI801.amx').read_bytes()
     if not data:
         raise RuntimeError('Empty module output')
-    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    # Container checkout can be owned by the runner UID. Trust this exact build
+    # directory for this read only; do not change global Git configuration.
+    revision = subprocess.check_output(
+        ['git', '-c', 'safe.directory=' + str(ROOT), 'rev-parse', 'HEAD'],
+        cwd=ROOT, text=True).strip()
     result = dict(revision=revision, compiler_command=command,
                   bytes=len(data), sha256=hashlib.sha256(data).hexdigest(),
                   signed=False, hardware_loaded=False, automatic_recovery=False)

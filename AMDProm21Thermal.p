@@ -42,7 +42,7 @@
 //  Client contract (cells are 8 bytes, -C64; the driver does not propagate
 //  module NTSTATUS to the host, so unavailability is expressed via out values):
 //
-//    ioctl_get_count(in: -, out[1]: number of controllers found and mapped)
+//    ioctl_get_count(in: -, out[1]: number of controllers found)
 //    ioctl_get_bar(in[1]: controller index, out[1]: BAR0 physical address, 0 if unavailable)
 //    ioctl_get_temp_raw(in[1]: controller index, out[1]: raw byte 1..255, 0 if invalid)
 //
@@ -58,11 +58,11 @@
 
 #define PCI_VENDOR_ID_AMD 0x1022
 
-#define XHCI_DEVICE_0 0x43F7   // 单 die Prom21（600 系 B650/X670，本机实测）
-#define XHCI_DEVICE_1 0x43F9   // B665（600 系，AMD 建议，上游 29381088ac50 已收）
-#define XHCI_DEVICE_2 0x43FA   // A620（600 系，AMD 建议，上游 29381088ac50 已收）
-#define XHCI_DEVICE_3 0x43FC   // 双 die Prom21（X870E，Linux prom21-xhci v7 匹配）
-#define XHCI_DEVICE_4 0x43FD   // 双 die Prom21（X870E，Linux prom21-xhci v7 匹配）
+#define XHCI_DEVICE_0 0x43F7   // single-die Prom21 (600 series B650/X670, verified on real hardware)
+#define XHCI_DEVICE_1 0x43F9   // B665 (600 series, suggested by AMD, in upstream 29381088ac50)
+#define XHCI_DEVICE_2 0x43FA   // A620 (600 series, suggested by AMD, in upstream 29381088ac50)
+#define XHCI_DEVICE_3 0x43FC   // dual-die Prom21 (X870E, matched by Linux prom21-xhci v7)
+#define XHCI_DEVICE_4 0x43FD   // dual-die Prom21 (X870E, matched by Linux prom21-xhci v7)
 
 // Board-dependent: single-die boards expose one xHCI, dual-die (X870E) two.
 // Four slots leave headroom for hybrid board layouts at zero memory cost.
@@ -127,8 +127,10 @@ NTSTATUS:read_bar0(bus, device, function, &addr) {
 NTSTATUS:scan_controllers() {
     for (new bus = 0; bus < 256; ++bus) {
         for (new device = 0; device < 32; ++device) {
-            // Function 0 决定该设备是否存在与是否多功能——但这只影响扫描深度，
-            // 不预设 func0 的 vendor（xHCI 可能是多功能设备中 func0 非 AMD 的一路）。
+            // Function 0 determines device presence and multifunctionality —
+            // this only affects the scan depth; function 0's own vendor is not
+            // assumed (the xHCI function of a multifunction device may not be
+            // function 0).
             new header_type = 0;
             new NTSTATUS:status = pci_config_read_word(bus, device, 0, PCI_REG_HEADER_TYPE, header_type);
             if (!NT_SUCCESS(status))
@@ -166,6 +168,8 @@ NTSTATUS:scan_controllers() {
 NTSTATUS:main() {
     if (get_arch() != ARCH_X64)
         return STATUS_NOT_SUPPORTED;
+    if (get_cpu_vendor() != CpuVendor_AMD)
+        return STATUS_NOT_SUPPORTED;
 
     new NTSTATUS:status = scan_controllers();
     if (!NT_SUCCESS(status))
@@ -173,13 +177,14 @@ NTSTATUS:main() {
 
     for (new i = 0; i < g_count; ++i) {
         g_va[i] = io_space_map(g_bar[i], MAP_SIZE);
-        // 映射失败只影响该控制器（g_va 保持 NULL），不拖垮整颗模块。
+        // A failed mapping only affects that controller (g_va stays NULL),
+        // it does not take down the whole module.
     }
 
     return STATUS_SUCCESS;
 }
 
-/// Number of Prom21 xHCI controllers found and mapped.
+/// Number of Prom21 xHCI controllers found.
 ///
 /// @param in Unused
 /// @param out [0] = controller count
@@ -225,7 +230,8 @@ DEFINE_IOCTL_SIZED(ioctl_get_temp_raw, 1, 1) {
     new data = 0;
     status = virtual_read_dword(g_va[index] + DATA_REG_OFFSET, data);
 
-    // 恢复原 index 值（驱动纪律：index 寄存器是共享资源，读写序列必须复原）。
+    // Restore the previous index value (driver discipline: the index register
+    // is a shared resource, every read sequence must restore it).
     virtual_write_dword(g_va[index] + INDEX_REG_OFFSET, previous);
 
     if (!NT_SUCCESS(status))

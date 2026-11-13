@@ -272,7 +272,8 @@ NTSTATUS:main() {
             if ((vid & 0xFFFF) == 0xFFFF || (vid & 0xFFFF) == 0)
                 continue;
             new header = 0;
-            pci_config_read_byte(bus, dev, 0, PCI_CFG_HEADER_TYPE, header);
+            if (!NT_SUCCESS(pci_config_read_byte(bus, dev, 0, PCI_CFG_HEADER_TYPE, header)))
+                header = 0; // unreadable header type: treat as single-function
             new fns = (header & 0x80) != 0 ? 8 : 1;
             for (new fn = 0; fn < fns; ++fn) {
                 if (fn != 0) {

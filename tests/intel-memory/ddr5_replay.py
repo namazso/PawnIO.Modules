@@ -13,6 +13,8 @@ class Ddr5Vm(Vm):
         self.original=bytes(self.mmio)
         self.hub=bytearray(128);self.hub[:5]=bytes([0x51,0x18,1,0x80,0xad]);self.hub[5]=2;self.hub[0x1a]=0;self.hub[0x31]=0x7c;self.hub[0x32]=2;self.hub[11]=0x0b
         self.pmic=bytearray(128);self.pmic[0x3b:0x3e]=bytes([0x10,0x8a,0x8c]);self.pmic[0x32]=0x80;self.pmic[0x30]=2
+        # Legacy PMIC model is a trap for regressions, never required for SPD.
+        self.spd_address=0x50;self.pmic_present=False
         self.spd=bytes((i*17+3)%256 for i in range(1024))
         self.ticks_us=0;self.selector_at=-10000;self.events=[];self.transfers=[];self.device_writes=[]
         self.fault=None;self.fault_used=False;self.commit_failed_write=False;self.hang=False;self.pending=None
@@ -28,18 +30,18 @@ class Ddr5Vm(Vm):
     def do_transfer(self):
         addr=self.mmio[4]>>1;read=self.mmio[4]&1;reg=self.mmio[3];value=self.mmio[5]
         self.transfers.append((addr,read,reg,value))
-        if addr not in [0x50,0x48]:return 4
+        if addr != self.spd_address and (addr != 0x48 or not self.pmic_present):return 4
         failed=bool(self.bus_fault and not self.bus_fault_used and self.bus_fault(addr,read,reg,value))
         if failed:
             self.bus_fault_used=True
             if not self.bus_fault_commits:return 4
         if not read:
-            assert (addr,reg) in [(0x50,11),(0x48,0x30)],('unexpected device write',addr,reg)
+            assert (addr,reg) in [(self.spd_address,11),(0x48,0x30)],('unexpected device write',addr,reg)
             self.device_writes.append((addr,reg,value))
-            if addr==0x50:self.hub[reg]=value
+            if addr==self.spd_address:self.hub[reg]=value
             else:self.pmic[reg]=value;self.selector_at=self.ticks_us
         else:
-            if addr==0x50:
+            if addr==self.spd_address:
                 if reg>=0x80:
                     assert self.hub[11]&8==0,'EEPROM mode must be one-byte before reading'
                     value=self.spd[(self.hub[11]&7)*128+(reg&127)]
@@ -138,15 +140,9 @@ def main():
         assert data==vm.spd[page*128:(page+1)*128]
         assert vm.hub[11]==0x0b and vm.restored()
     tests.append({'case':'all-eight-spd-pages-restore-mode-and-controller','passed':True})
-    for channel in [0,1,2,3,5,8,9]:
-        result,w,data=vm.exchange(3,0,channel)
-        assert result==0 and w[6:9]==(0,0,1),(channel,w)
-        assert data[0]==data[4]==2 and data[1]==data[3]==(0x82 | channel<<3)
-        assert vm.pmic[0x30]==2 and vm.restored()
-    tests.append({'case':'all-adc-channels-settle-and-restore','passed':True})
     vm=Ddr5Vm(blob);assert vm.run()==0
     result,w,data=vm.exchange(4,0,0)
-    assert result==0 and w[1]==2 and w[6:9]==(0,0,1) and w[14]==24
+    assert result==0 and w[1]==3 and w[6:9]==(0,0,1) and w[14]==24
     assert data[:5]==bytes([0x51,0x18,1,0x80,0xad]) and data[5:8]==bytes([2,0,1]) and data[8:10]==bytes([0x7c,2])
     assert data[10:12]==bytes([2,0]) and data[12:14]==b'\x0b\x0b' and data[14:19]==data[:5] and not any(data[19:])
     assert vm.word_reads==1 and vm.hub[11]==0x0b and vm.restored()
@@ -215,7 +211,7 @@ def main():
     tests.append({'case':'ambiguous-controller-write-restores-even-when-call-failed','passed':True})
     vm=Ddr5Vm(blob);assert vm.run()==0
     vm.fault=lambda name,args:name=='virtual_write_byte' and args==(13,3)
-    result,w,data=vm.exchange(3,0,0)
+    result,w,data=vm.exchange(2,0,0)
     assert result==0 and w[6]==0 and w[7]==status(0xc0000185) and w[8]==0 and not any(data),w
     n=len(vm.events);result,_,_=vm.exchange(0)
     assert result!=0 and len(vm.events)==n
@@ -233,17 +229,6 @@ def main():
     assert result==0 and w[6]==0 and w[7]==status(0xc000009d) and not any(data)
     assert vm.mmio[0]&0x40
     tests.append({'case':'page-restoration-failure-retains-hardware-ownership','passed':True})
-    vm=Ddr5Vm(blob);assert vm.run()==0
-    vm.bus_fault=lambda a,r,c,v:a==0x48 and r==0 and c==0x30 and v==2
-    result,w,data=vm.exchange(3,0,2)
-    assert result==0 and w[6]==0 and w[7]==status(0xc000009d) and not any(data)
-    tests.append({'case':'adc-restoration-failure-discards-measurement','passed':True})
-    vm=Ddr5Vm(blob);assert vm.run()==0
-    vm.fault=lambda n,a:n=='microsleep' and a==(9000,)
-    result,w,data=vm.exchange(3,0,2)
-    assert result==0 and w[6]==status(0xc0000185) and w[7]==0 and vm.pmic[0x30]==2 and vm.restored()
-    assert not any(a==0x48 and r==1 and c==0x31 for a,r,c,v in vm.transfers)
-    tests.append({'case':'failed-settle-does-not-read-stale-adc','passed':True})
     vm=Ddr5Vm(blob);assert vm.run()==0
     vm.fault=lambda n,a:n=='virtual_read_qword'
     result,w,data=vm.exchange(1)
@@ -275,15 +260,11 @@ def main():
     assert result==0 and w[6]==status(0xc000009d) and w[7]==status(0xc0000185) and w[8]==0 and not any(data),w
     tests.append({'case':'simultaneous-acquisition-and-restoration-failures-retain-both-codes','passed':True})
     vm=Ddr5Vm(blob);assert vm.run()==0;vm.controller_changed=True
-    result,w,_=vm.exchange(3)
+    result,w,_=vm.exchange(1)
     assert result==0 and w[6]==status(0xc0000182) and not vm.transfers,w
     tests.append({'case':'changed-controller-stops-before-first-bus-operation','passed':True})
-    vm=Ddr5Vm(blob);assert vm.run()==0;vm.pmic[0x3c]=0x80
-    result,w,_=vm.exchange(3)
-    assert result==0 and w[6]==status(0xc00000bb) and not vm.device_writes and vm.restored(),w
-    tests.append({'case':'unknown-vendor-never-writes-adc-selector','passed':True})
     fixtures=[]
-    for operation,slot,argument in [(0,0,0),(1,0,0),(2,0,2),(3,0,0),(3,0,5),(4,0,0),(1,7,0)]:
+    for operation,slot,argument in [(0,0,0),(1,0,0),(2,0,2),(4,0,0),(1,7,0)]:
         vm=Ddr5Vm(blob);assert vm.run()==0
         result,w,_=vm.exchange(operation,slot,argument)
         assert result==0

@@ -1,4 +1,4 @@
-// Fixed DDR5 observation module; research candidate, never a tuning API.
+// Fixed SPD-only DDR5 observation module; research candidate, never a tuning API.
 // i801 register definitions and controller approach derived from PawnIO.Modules 0.2.11.
 // Copyright (C) 2025 Steve-Tech <me@stevetech.au>
 // SPDX-License-Identifier: LGPL-2.1-or-later
@@ -167,6 +167,9 @@ NTSTATUS:stop_own_transaction() {
 }
 
 NTSTATUS:byte_transfer(address, reg, bool:write, &value, bool:word=false) {
+    // No PMIC address or EEPROM write is reachable, including during recovery.
+    if (address < 0x50 || address > 0x57 || reg < 0 || reg > 255 ||
+        (write && reg != 0x0b)) return STATUS_ACCESS_DENIED;
     // The only word transaction is a fixed read of the SPD5118 temperature pair.
     if (word && (write || address < 0x50 || address > 0x57 || reg != 0x31))
         return STATUS_ACCESS_DENIED;
@@ -226,9 +229,8 @@ NTSTATUS:read_byte(address, reg, &value) {
 }
 
 NTSTATUS:write_selector(address, reg, value) {
-    // Only two observational selectors are writable; no VID, VR enable or EEPROM.
-    if (!((address >= 0x50 && address <= 0x57 && reg == 0x0b) ||
-          (address >= 0x48 && address <= 0x4f && reg == 0x30))) return STATUS_ACCESS_DENIED;
+    // MR11 is the only peripheral write: temporary page/address mode, then restore.
+    if (!(address >= 0x50 && address <= 0x57 && reg == 0x0b)) return STATUS_ACCESS_DENIED;
     return byte_transfer(address, reg, true, value);
 }
 
@@ -291,31 +293,19 @@ NTSTATUS:hub_identity(slot, identity[5]) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS:pmic_identity(slot, identity[3], &enabled) {
-    g_stage = 20;
-    for (new i; i < 3; i++) {
-        new NTSTATUS:status = read_byte(0x48+slot, 0x3b+i, identity[i]);
-        if (!NT_SUCCESS(status)) return status;
-    }
-    return read_byte(0x48+slot, 0x32, enabled);
-}
-
 put_byte(out[REPLY_WORDS], offset, value) {
     out[16 + offset / 8] |= (value & 255) << ((offset % 8) * 8);
 }
 
 NTSTATUS:observe_identity(slot, out[REPLY_WORDS]) {
-    new hub[5], pmic[3], enabled, original;
+    new hub[5], original;
     new NTSTATUS:status = hub_identity(slot, hub);
-    if (!NT_SUCCESS(status)) return status;
-    status = pmic_identity(slot, pmic, enabled);
     if (!NT_SUCCESS(status)) return status;
     status = read_byte(0x50+slot, 0x0b, original);
     if (!NT_SUCCESS(status)) return status;
     for (new i; i < 5; i++) put_byte(out, i, hub[i]);
-    for (new i; i < 3; i++) put_byte(out, 5+i, pmic[i]);
-    put_byte(out, 8, enabled); put_byte(out, 9, original);
-    out[14] = 16;
+    put_byte(out, 5, original);
+    out[14] = 8;
     return STATUS_SUCCESS;
 }
 
@@ -348,39 +338,6 @@ NTSTATUS:observe_page(slot, page, out[REPLY_WORDS]) {
         if (NT_SUCCESS(verified) && final_page != original) cleanup_error(STATUS_DEVICE_PROTOCOL_ERROR);
     }
     out[14] = 128;
-    return status;
-}
-
-NTSTATUS:observe_adc(slot, selector, out[REPLY_WORDS]) {
-    new hub[5], pmic[3], enabled, original;
-    new NTSTATUS:status = hub_identity(slot, hub);
-    if (!NT_SUCCESS(status)) return status;
-    status = pmic_identity(slot, pmic, enabled);
-    if (!NT_SUCCESS(status)) return status;
-    if ((pmic[1] & 127) != 10 || (pmic[2] & 127) != 12 || !(enabled & 0x80)) return STATUS_NOT_SUPPORTED;
-    g_stage = 40;
-    status = read_byte(0x48+slot, 0x30, original);
-    if (!NT_SUCCESS(status)) return status;
-    if (original & 4) return STATUS_NOT_SUPPORTED;
-    new desired = (original & 3) | 0x80 | (selector << 3);
-    // Restoration is required even when the acquisition write reports failure.
-    status = write_selector(0x48+slot, 0x30, desired);
-    new before, value, after;
-    if (NT_SUCCESS(status)) {
-        status = microsleep(9000);
-        if (NT_SUCCESS(status)) status = read_byte(0x48+slot, 0x30, before);
-        if (NT_SUCCESS(status) && before != desired) status = STATUS_DEVICE_PROTOCOL_ERROR;
-    }
-    if (NT_SUCCESS(status)) status = read_byte(0x48+slot, 0x31, value);
-    if (NT_SUCCESS(status)) {
-        status = read_byte(0x48+slot, 0x30, after);
-        if (NT_SUCCESS(status) && after != desired) status = STATUS_DEVICE_PROTOCOL_ERROR;
-    }
-    cleanup_error(restore_selector(0x48+slot, 0x30, original));
-    put_byte(out,0,original);put_byte(out,1,before);put_byte(out,2,value);
-    put_byte(out,3,after);put_byte(out,4,original);
-    for (new i; i < 3; i++) put_byte(out,5+i,pmic[i]);
-    out[14] = 8;
     return status;
 }
 
@@ -447,31 +404,30 @@ NTSTATUS:observe_temperature(slot, out[REPLY_WORDS]) {
 /// Observe one fixed Intel i801 DDR5 operation and its cleanup receipt.
 ///
 /// Callers must hold Access_SMBUS.HTP.Method for their whole observation session.
-/// Operations 1-4 issue SMBus transactions and may temporarily select MR11/R30;
+/// Operations 1, 2 and 4 issue SMBus transactions; 2 and 4 may select MR11;
 /// restoration errors are retained independently of the acquisition status.
 /// No voltage setting, EEPROM write, sensor enabling, or arbitrary address API.
 ///
 /// @param in [0] sequence (starts at 1; increments once per accepted request),
-///           [1] operation (0 controller, 1 identity, 2 SPD page, 3 PMIC ADC,
-///           4 SPD5118 temperature), [2] slot (0..7), [3] page/ADC selector or 0.
+///           [1] operation (0 controller, 1 hub identity, 2 SPD page,
+///           4 SPD5118 temperature), [2] slot (0..7), [3] page or 0.
 /// @param in_size Must be 4 cells.
-/// @param out A 32-cell schema-2 receipt. [6] primary NTSTATUS, [7] cleanup
+/// @param out A 32-cell schema-3 receipt. [6] primary NTSTATUS, [7] cleanup
 ///            NTSTATUS, [8] cleanup-confirmed, [14] payload length in bytes;
 ///            [16..31] packed payload. See tests/intel-memory/README.md.
 /// @param out_size Must be 32 cells (256 bytes).
 /// @return STATUS_SUCCESS means a receipt was returned, not measurement success.
 ///         Inspect both embedded statuses and cleanup-confirmed before use.
-/// @note PMIC manufacturer/VR-enable checks do not establish the exact PMIC
-///       model. Operation 3 still requires model qualification before release.
+/// @note Operation 3 is reserved and rejected before any native call. No PMIC
+///       is probed. Schema 3 identity is 8 bytes: hub[5], original MR11, zero[2].
 DEFINE_IOCTL_SIZED(ioctl_ddr5, 4, REPLY_WORDS) {
     new sequence=in[0], operation=in[1], slot=in[2], argument=in[3];
     if (g_active || g_poison || sequence != g_sequence+1 || sequence > 0xffffffff ||
-        operation < 0 || operation > 4 || slot < 0 || slot > 7 || argument < 0 || argument > 9)
+        operation < 0 || operation > 4 || operation == 3 ||
+        slot < 0 || slot > 7 || argument < 0 || argument > 7)
         return STATUS_INVALID_PARAMETER;
     if ((operation == 0 && (slot != 0 || argument != 0)) ||
-        (operation == 1 && argument != 0) || (operation == 2 && argument > 7) ||
-        (operation == 3 && argument != 0 && argument != 1 && argument != 2 &&
-         argument != 3 && argument != 5 && argument != 8 && argument != 9))
+        (operation == 1 && argument != 0))
         return STATUS_INVALID_PARAMETER;
     if (operation == 4 && argument != 0) return STATUS_INVALID_PARAMETER;
     for (new i; i < REPLY_WORDS; i++) out[i]=0;
@@ -487,7 +443,6 @@ DEFINE_IOCTL_SIZED(ioctl_ddr5, 4, REPLY_WORDS) {
             switch (operation) {
                 case 1: primary=observe_identity(slot,out);
                 case 2: primary=observe_page(slot,argument,out);
-                case 3: primary=observe_adc(slot,argument,out);
                 case 4: primary=observe_temperature(slot,out);
             }
         }
@@ -499,7 +454,7 @@ DEFINE_IOCTL_SIZED(ioctl_ddr5, 4, REPLY_WORDS) {
     new NTSTATUS:clock_after=now_ms(now);
     if (NT_SUCCESS(primary) && !NT_SUCCESS(clock_after)) primary=clock_after;
     if (NT_SUCCESS(primary) && now > g_deadline) primary=STATUS_IO_TIMEOUT;
-    out[0]=MAGIC;out[1]=2;out[2]=sequence;out[3]=operation;out[4]=slot;out[5]=argument;
+    out[0]=MAGIC;out[1]=3;out[2]=sequence;out[3]=operation;out[4]=slot;out[5]=argument;
     out[6]=_:primary;out[7]=_:g_cleanup;out[8]=NT_SUCCESS(g_cleanup) ? 1 : 0;out[9]=g_stage;
     out[10]=g_ids | (g_subsystem << 32);out[11]=(g_bus << 16) | 0x1f04;
     if (!NT_SUCCESS(primary) || !NT_SUCCESS(g_cleanup)) {

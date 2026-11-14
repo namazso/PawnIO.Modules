@@ -1,8 +1,11 @@
 # Intel memory observation candidates
 
-Status: draft for upstream review and eventual signing. Neither module has been
+Status: unsigned SPD-only schema-3 proposal for upstream review (2026-11-14).
+Neither module has been
 loaded by a driver or validated against real hardware. The consuming Rust
 application keeps both module assets absent, so these paths remain disabled.
+Its existing schema-2 consumer has not been migrated to this schema-3 candidate;
+that migration must be checked against the source actually accepted upstream.
 This proposal is not a request to distribute an unreviewed binary.
 
 ## Scope
@@ -28,16 +31,17 @@ once per accepted request; slots are 0..7. A rejected request does not consume i
 | Operation | Argument | Observation |
 | --- | --- | --- |
 | 0 | slot=0, argument=0 | Controller identity, no SMBus transfer |
-| 1 | 0 | SPD5118 and PMIC identity, VR-enable state, original MR11 |
+| 1 | 0 | SPD5118 hub identity and original MR11; no PMIC access |
 | 2 | page 0..7 | 128 SPD bytes; restore original MR11 |
-| 3 | selector 0,1,2,3,5,8,9 | Raw PMIC ADC with selector restoration; qualification pending |
+| 3 | any | Reserved; rejected before any native call, without consuming sequence |
 | 4 | 0 | SPD5118 capability/configuration and optional temperature |
 
-Slots map to SPD `0x50+slot` and PMIC `0x48+slot`, not firmware DIMM/channel names.
+Slots map only to SPD `0x50+slot`, not firmware DIMM/channel names. PMIC presence,
+manufacturer and enabled state are not prerequisites for any observation here.
 
 | Output cells | Meaning |
 | --- | --- |
-| 0,1 | Magic `0x004D435244445235`, schema 2 |
+| 0,1 | Magic `0x004D435244445235`, schema 3 |
 | 2..5 | Exact request echo |
 | 6,7 | Primary and cleanup NTSTATUS, separately sign-extended |
 | 8,9 | Cleanup confirmed (0/1), stage |
@@ -50,6 +54,11 @@ Transport success means a receipt was delivered. Either nonzero embedded status
 rejects the values. Payload is cleared after an acquisition or cleanup error.
 Only a first-address NACK with confirmed cleanup may mean an unresponsive slot;
 a partial identity read failure is not an absent DIMM.
+
+The identity payload is exactly 8 bytes: hub identity in bytes 0..4, original
+MR11 in byte 5, and two reserved zero bytes. PMIC identity and VR-enable fields
+were removed rather than filled with invented zero observations. The schema
+change is deliberately incompatible; consumers must reject unknown schemas.
 
 Temperature checks MR5/MR26, selects page zero and byte-address mode temporarily,
 and reads MR49/MR50 in one SMBus Word Data transaction (controller protocol `0x0c`).
@@ -83,7 +92,7 @@ and refuses further requests/unload. This does not prove recovery after forced
 process termination, OS failure, firmware concurrency, or power loss.
 
 These are observation operations, not physically write-free ones. DDR5 temporarily
-writes transaction/control registers, SPD5118 MR11, and PMIC R30. It has no voltage
+writes transaction/control registers and SPD5118 MR11. It has no PMIC access, voltage
 setting, EEPROM write, VR-enable write, or arbitrary peripheral write operation.
 Each transfer has an 80 ms / 320-poll bound and each operation a 2500 ms cooperative
 budget. Recovery is still attempted after the budget. A blocked kernel native
@@ -95,11 +104,9 @@ cannot be preempted by these bounds. CAPID has no register writes or mappings.
   access with caller restrictions. This proposal additionally puts selector and
   controller restoration and a terminal receipt in the module. Maintainer advice
   on integrating those changes into SmbusI801 instead is welcome.
-- PMIC operation 3 is a research candidate. Its Richtek manufacturer/VR-enable
-  checks do **not** prove RTQ5119A model identity or a valid rail mapping. The
-  consuming application currently has no qualified PMIC profiles and dispatches
-  no ADC calls. Public module consumers cannot rely on that application's gate;
-  exact model admission or removal of operation 3 must be resolved before signing.
+- The former PMIC operation 3 was removed from the module, not just hidden by a
+  caller-side flag. A separate, exact-model-qualified PMIC proposal would be
+  needed to restore that capability; this revision does not claim voltage data.
 - Controller layout, semaphore behavior, host bridge generation, peripheral
   identity, cleanup/unload, firmware concurrency and failure behavior require
   hardware qualification. No live SPD, temperature, PMIC voltage, or CAPID sample
@@ -120,10 +127,15 @@ python -B tests/intel-memory/run_offline.py --compiler C:/path/to/pawncc.exe
 The runner uses the repository's includes. It compiles both modules with the
 existing CI flags, then with `-O0` for the limited VM, and replays real AMX bytes.
 It does not load an AMX into a driver. Generated files stay in ignored `out/`.
-Thirty DDR5 cases cover restoration, native failures, temperature protocol and
-state, unknown PMIC manufacturer, timing and ownership. Nine CAPID groups cover
+Twenty-six DDR5 cases retain restoration, native failures, temperature protocol,
+timing and ownership checks. The four old ADC-specific cases are retired with
+the removed capability, not skipped on an enabled path. Ten additional SPD-only
+groups cover PMIC-independent identity, all eight fixed addresses, rejection of
+80 former ADC inputs before native dispatch, request sizes/sequence, schema-3
+payloads, preservation of unrelated MR11 bits and fixed native/export surfaces.
+Nine CAPID groups cover
 133 raw patterns, exact packed dwords/zero tail, fixed native/export allowlists,
-request sizes, sequences, failure preservation and identity drift. Fourteen
+request sizes, sequences, failure preservation and identity drift. Eighteen
 compiled behavior mutations must fail their assertions; build failures are not
 counted as effective mutations.
 
@@ -138,5 +150,4 @@ binary is redistributed here.
 
 - [PawnIO SmbusI801 at base 52a7e536](https://github.com/namazso/PawnIO.Modules/blob/52a7e536dff3e53c96917a28caac5e0fa6510696/SmbusI801.p): controller register/transfer reference.
 - [Linux SPD5118 reference](https://github.com/torvalds/linux/blob/master/drivers/hwmon/spd5118.c): register and protocol facts; its implementation was not copied.
-- [Richtek RTQ5119A DSQ5119A-02](https://www.richtek.com/assets/product_file/RTQ5119A/DSQ5119A-02.pdf): R30/R31 ADC and selector reference, not proof of the installed PMIC.
 - [Intel CAPID A](https://edc.intel.com/content/www/th/th/design/publications/13th-generation-core-processors-datasheet-volume-2-of-2/capabilities-a-capid0-a-0-0-0-pci-offset-e4/) and [CAPID E](https://edc.intel.com/content/www/kr/ko/design/publications/13th-generation-core-processor-datasheet-volume-2-of-2/capabilities-e-capid0-e-0-0-0-pci-offset-f0/): fixed host-bridge capability registers, not live voltages.

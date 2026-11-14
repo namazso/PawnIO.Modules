@@ -49,7 +49,8 @@ def main():
             shutil.copyfile(root / (module + '.p'), directory / (module + '.p'))
             run('build-' + module, [*base, module + '.p', *flags], directory)
     replay = output / 'replay'
-    for name, script in [('ddr5', 'ddr5_replay.py'), ('capid', 'capid_replay.py')]:
+    for name, script in [('ddr5', 'ddr5_replay.py'), ('spd-scope', 'spd_scope_replay.py'),
+                         ('capid', 'capid_replay.py')]:
         run(name, [sys.executable, '-B', str(here / script), '--module-dir', str(replay),
                    '--output-dir', str(replay)], replay)
 
@@ -100,7 +101,18 @@ def main():
         ('capid-repeat-sequence', 'sequence != g_sequence + 1',
          '(sequence == 0 && g_sequence == -1)'),
     ]
+    scope_cases = [
+        ('accept-removed-adc-operation', 'operation > 4 || operation == 3 ||',
+         'operation > 4 ||'),
+        ('keep-old-identity-schema', 'out[0]=MAGIC;out[1]=3;',
+         'out[0]=MAGIC;out[1]=2;'),
+        ('misplace-identity-selector', 'put_byte(out, 5, original);',
+         'put_byte(out, 6, original);'),
+        ('clear-unrelated-selector-bits', 'new desired = (original & ~15) | page;',
+         'new desired = page;'),
+    ]
     for module, script, cases in [('IntelDdr5', 'ddr5_replay.py', ddr_cases),
+                                   ('IntelDdr5', 'spd_scope_replay.py', scope_cases),
                                    ('IntelCapid', 'capid_replay.py', capid_cases)]:
         original = (root / (module + '.p')).read_text(encoding='utf-8')
         for name, old, new in cases:
@@ -116,7 +128,7 @@ def main():
               'compiler_sha256': hashlib.sha256(compiler.read_bytes()).hexdigest(),
               'module_sources': {m: hashlib.sha256((root / (m + '.p')).read_bytes()).hexdigest()
                                  for m in ['IntelDdr5', 'IntelCapid']},
-              'mutations_effective': len(ddr_cases) + len(capid_cases),
+              'mutations_effective': len(ddr_cases) + len(scope_cases) + len(capid_cases),
               'baseline_builds': 4, 'results': results}
     (output / 'results.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print('All checks passed:', output, flush=True)

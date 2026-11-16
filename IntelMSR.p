@@ -92,7 +92,7 @@ bool:is_allowed_msr_read(msr) {
 bool:is_allowed_msr_write(msr) {
     switch (msr) {
         case MSR_VR_CURRENT_CONFIG, MSR_PKG_POWER_LIMIT, MSR_OC_MAILBOX, MSR_VR_MAILBOX_INTERFACE, MSR_VR_MAILBOX_DATA,
-             MSR_MISC_FEATURE_CONTROL:
+             MSR_MISC_FEATURE_CONTROL, MSR_IA32_TEMPERATURE_TARGET:
             return true;
         default:
             return false;

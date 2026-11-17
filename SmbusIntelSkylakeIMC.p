@@ -244,8 +244,8 @@ NTSTATUS:ImcAccess(command, read_write, addr, hstcmd, &value)
 
     //The address field is only 7 bits wide. Bit 7 would land on bit 15 of the
     //command, which is WRITE_OPERATION, so an out of range address would turn
-    //a read into a write to an aliased address.
-    if (addr < 0 || addr > ADDR_MAX)
+    //a read into a write to an aliased address. Zero is General Call broadcast.
+    if (addr <= 0 || addr > ADDR_MAX)
     {
         return STATUS_INVALID_PARAMETER;
     }

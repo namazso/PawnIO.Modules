@@ -372,6 +372,13 @@ DEFINE_IOCTL(ioctl_ec_command) {
     new result;
     new version = in[0];
     new command = in[1];
+    // EC packet fields are u8 version + u16 command. Reject negatives and
+    // truncated-wide values before they hit the packet builder. Command
+    // set itself stays broad by design (EC owns flash/power/etc).
+    if (version < 0 || version > 0xFF)
+        return STATUS_INVALID_PARAMETER;
+    if (command < 0 || command > 0xFFFF)
+        return STATUS_INVALID_PARAMETER;
     /*
      * ec_out_* and ec_in_* are outgoing and incoming to the EC.
      * They are flipped from the in and out parameters to this function.

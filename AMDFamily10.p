@@ -108,6 +108,11 @@ DEFINE_IOCTL_SIZED(ioctl_read_miscctl, 2, 1) {
     new cpu_idx = in[0];
     new offset = in[1];
 
+    // PCI devices 24-31 hold the per-node MISCCTL (F3). Clamp to that window
+    // so a negative or large idx can't reach arbitrary bus 0 devices/functions.
+    if (cpu_idx < 0 || cpu_idx > 7)
+        return STATUS_INVALID_PARAMETER;
+
     new didvid;
     new NTSTATUS:status = pci_config_read_dword(PCI_BUS, PCI_BASE_DEVICE + cpu_idx, PCI_MISCCTL_FUNCTION, 0, didvid);
     if (!NT_SUCCESS(status))
@@ -160,12 +165,18 @@ DEFINE_IOCTL_SIZED(ioctl_read_smu, 1, 1) {
 
 /// Measure TSC multiplier.
 ///
+/// Family 10h to 16h has an invariant TSC, so we can only use event counters to measure clock speed. However, those
+/// counters are affected by halts, so we do the measurement with interrupts disabled to stop the scheduler from
+/// messing with it. This however means that we can't rely on most clock sources. For this reason, we measure the event
+/// count to TSC ratio. Usermode can then measure the (invariant) TSC frequency to a more reliable clock and calculate
+/// the event frequency from that.
+///
 /// @param in Unused
 /// @param in_size Unused
-/// @param out [0] = Performance event count during a tick, [1] = COFVID status
-/// @param out_size Must be 2
+/// @param out [0] = COFVID status, [1] = Control TSC delta, [2] = Control event counter, [3] = Measured TSC delta, [4] = Measured event counter
+/// @param out_size Must be 5
 /// @return An NTSTATUS
-DEFINE_IOCTL_SIZED(ioctl_measure_tsc_multiplier, 0, 2) {
+DEFINE_IOCTL_SIZED(ioctl_measure_tsc_multiplier, 0, 5) {
     new ras[4];
     cpuid(0x80000007, 0, ras);
 
@@ -180,32 +191,45 @@ DEFINE_IOCTL_SIZED(ioctl_measure_tsc_multiplier, 0, 2) {
     if (has_cpb)
         msr_write(MSR_K7_HWCR, hwcr | (1 << 25));
 
-    // Back up EVNTSEL0 and PERFCTR0
+    // back up EVNTSEL0 and PERFCTR0
     new old_eventsel0, old_perfctr0;
     msr_read(MSR_K7_EVNTSEL0, old_eventsel0);
     msr_read(MSR_K7_PERFCTR0, old_perfctr0);
 
-    // start counting kernel events
-    msr_write(MSR_K7_EVNTSEL0, (1 << 22) | (1 << 16) | 0x76);
+    // Bit 22: EN | Counter Enable
+    // Bit 17: OS | Operating-System Mode
+    // 0x76: Event select for "PMCx076 CPU Clocks not Halted". From Family 15h BKDG:
+    //   The number of clocks that the CPU is not in a halted state (due to STPCLK or a HLT instruction). Note: this
+    //   event allows system idle time to be automatically factored out from IPC (or CPI) measurements, providing the
+    //   OS halts the CPU when going idle. If the OS goes into an idle loop rather than halting, such calculations are
+    //   influenced by the IPC of the idle loop.
+    msr_write(MSR_K7_EVNTSEL0, (1 << 22) | (1 << 17) | 0x76);
+
+    // measure a control TSC count for the WRMSR/RDMSR overhead
+
+    new tsc_control_start = rdtsc();
+
+    msr_write(MSR_K7_PERFCTR0, 0);
+    
+    // this is where the measurement loop would be, but we don't do anything here
+
+    new ctr_control_read;
+    msr_read(MSR_K7_PERFCTR0, ctr_control_read);
+
+    new tsc_control_end = rdtsc();
+
+    // now do the measurement for real
+
+    new tsc_start = rdtsc();
+
     msr_write(MSR_K7_PERFCTR0, 0);
 
-    new tick_old = get_tick_count();
-    new tick_start = tick_old + 1;
-    new tick_end = tick_start + 1;
+    while (rdtsc() - tsc_start < 2000) {} // busy wait some microseconds. at slowest HT at 200 MHz this is 10us
 
-    // wait for next tick
-    while (get_tick_count() < tick_start) {}
+    new ctr_read;
+    msr_read(MSR_K7_PERFCTR0, ctr_read);
 
-    // read current event ctr
-    new ctr_start;
-    msr_read(MSR_K7_PERFCTR0, ctr_start);
-    
-    // wait for next tick
-    while (get_tick_count() < tick_end) {}
-    
-    // read current event ctr
-    new ctr_end;
-    msr_read(MSR_K7_PERFCTR0, ctr_end);
+    new tsc_end = rdtsc();
 
     // read COFVID status
     new cofvid;
@@ -220,9 +244,12 @@ DEFINE_IOCTL_SIZED(ioctl_measure_tsc_multiplier, 0, 2) {
 
     interrupts_enable();
 
-    // usermode can figure out the stats from these two
-    out[0] = ctr_end - ctr_start;
-    out[1] = cofvid;
+    // usermode can figure out the stats from these
+    out[0] = cofvid;
+    out[1] = tsc_control_end - tsc_control_start;
+    out[2] = ctr_control_read;
+    out[3] = tsc_end - tsc_start;
+    out[4] = ctr_read;
 
     return STATUS_SUCCESS;
 }

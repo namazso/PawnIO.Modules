@@ -281,6 +281,13 @@ DEFINE_IOCTL_SIZED(ioctl_superio_outb, 2, 0) {
     if (!is_ready())
         return STATUS_DEVICE_NOT_READY;
 
+    // LDSEL (0x07), ENABLE (0x30) and BARs (0x60-0x63) repoint the decoded
+    // ports. Allowing them here would let callers reprogram BARs (e.g. to
+    // 0xCF8) then call find_bars to allowlist arbitrary PIO. Reads stay open.
+    if (reg == DEVICE_SELECT_REGISTER || reg == 0x30
+        || (reg >= BASE_ADDRESS_REGISTER && reg <= BASE_ADDRESS_REGISTER_2 + 1))
+        return STATUS_ACCESS_DENIED;
+
     superio_outb(reg, val);
     return STATUS_SUCCESS;
 }

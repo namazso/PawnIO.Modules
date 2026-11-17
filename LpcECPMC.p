@@ -1,0 +1,72 @@
+//  PawnIO Modules - Modules for various hardware to be used with PawnIO.
+//  Copyright (C) 2026  lhzlhz419
+//
+//  This library is free software; you can redistribute it and/or
+//  modify it under the terms of the GNU Lesser General Public
+//  License as published by the Free Software Foundation; either
+//  version 2.1 of the License, or (at your option) any later version.
+//
+//  This library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+//  Lesser General Public License for more details.
+//
+//  You should have received a copy of the GNU Lesser General Public
+//  License along with this library; if not, write to the Free Software
+//  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+//
+//  SPDX-License-Identifier: LGPL-2.1-or-later
+
+#include <pawnio.inc>
+
+// This EC PMC/OEM host-interface layout is present in various embedded
+// controller implementations, including Lenovo systems. Commands sent through
+// the interface remain vendor- and firmware-specific.
+
+is_port_allowed(port) {
+    return port == 0x68 || port == 0x6C;
+}
+
+/// Read byte from the EC PMC/OEM host interface.
+///
+/// @param in [0] = Port
+/// @param in_size Must be 1
+/// @param out [0] = Value read
+/// @param out_size Must be 1
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_EC" mutant before calling this
+DEFINE_IOCTL_SIZED(ioctl_pio_read, 1, 1) {
+    new port = in[0] & 0xFFFF;
+
+    if (!is_port_allowed(port))
+        return STATUS_ACCESS_DENIED;
+
+    out[0] = io_in_byte(port);
+    return STATUS_SUCCESS;
+}
+
+/// Write byte to the EC PMC/OEM host interface.
+///
+/// @param in [0] = Port, [1] = Value
+/// @param in_size Must be 2
+/// @param out Unused
+/// @param out_size Unused
+/// @return An NTSTATUS
+/// @warning You should acquire the "\BaseNamedObjects\Access_EC" mutant before calling this
+DEFINE_IOCTL_SIZED(ioctl_pio_write, 2, 0) {
+    new port = in[0] & 0xFFFF;
+    new value = in[1];
+
+    if (!is_port_allowed(port))
+        return STATUS_ACCESS_DENIED;
+
+    if (value < 0 || value > 0xFF)
+        return STATUS_INVALID_PARAMETER;
+
+    io_out_byte(port, value);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS:main() {
+    return STATUS_SUCCESS;
+}

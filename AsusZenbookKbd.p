@@ -47,26 +47,26 @@ static NTSTATUS:wait_obf() {
 
 /// Set keyboard backlight PWM brightness (0x00 - 0xFF).
 DEFINE_IOCTL_SIZED(ioctl_set_brightness, 1, 0) {
-    new level = in & 0xFF;
+    new level = in[0] & 0xFF;
 
     new NTSTATUS:status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_CMD_PORT, 0xFF);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_CMD_PORT, 0x9E);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_DATA_PORT, 0x1F);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_DATA_PORT, 0xFF);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_DATA_PORT, level);
 
     return wait_ibf();
@@ -75,24 +75,24 @@ DEFINE_IOCTL_SIZED(ioctl_set_brightness, 1, 0) {
 /// Read current keyboard backlight PWM brightness (0x00 - 0xFF).
 DEFINE_IOCTL_SIZED(ioctl_get_brightness, 0, 1) {
     new NTSTATUS:status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_CMD_PORT, 0xFF);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_CMD_PORT, 0x8E);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_DATA_PORT, 0x1F);
 
     status = wait_ibf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
     io_out_byte(EC_DATA_PORT, 0x00);
 
     status = wait_obf();
-    if (status < 0) return status;
+    if (status != STATUS_SUCCESS) return status;
 
-    out = io_in_byte(EC_DATA_PORT) & 0xFF;
+    out[0] = io_in_byte(EC_DATA_PORT) & 0xFF;
     return STATUS_SUCCESS;
 }

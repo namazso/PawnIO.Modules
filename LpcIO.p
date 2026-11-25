@@ -70,9 +70,11 @@ check_and_add_bar(val, val_v) {
         if (val < 0x100)
             return;
 
-        // some Fintek chips have address register offset 0x05 added already
-        if ((val & 0x07) == 0x05)
-            val &= 0xFFF8;
+        // the low three bits of a base address are not part of it, the chip decodes the 8-port block whole
+        // (as Linux's it87 and nct6775 drivers mask them): some Fintek chips have address register offset 0x05
+        // added already, and some firmware leaves other low bits set (an ASUS ROG STRIX B850-F GAMING WIFI7 NEO
+        // reports 0x207 for its NCT6799D hardware monitor at 0x200)
+        val &= 0xFFF8;
 
         if (is_port_blacklisted(val) || is_port_blacklisted(val + 7))
             return;

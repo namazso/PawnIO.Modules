@@ -596,8 +596,8 @@ NTSTATUS:i801_smbus_block_transaction(addr, hstcmd, read_write, command, in[33],
 NTSTATUS:i801_inuse(bool:inuse)
 {
     if (inuse) {
-        // Wait for device to be unlocked by BIOS/ACPI
-        // Linux doesn't do this, since some BIOSes might not unlock it
+        // Give BIOS/ACPI time to unlock the device. Some BIOSes leave INUSE
+        // set, so continue after the timeout; i801_check_pre still checks HOST_BUSY.
         new deadline = get_tick_count() + MAX_TIMEOUT;
         new is_inuse;
         virtual_read_byte(SMBHSTSTS, is_inuse);
@@ -609,8 +609,7 @@ NTSTATUS:i801_inuse(bool:inuse)
         }
 
         if (is_inuse) {
-            debug_print(''SMBus device is in use by BIOS/ACPI\n'');
-            return STATUS_IO_TIMEOUT;
+            debug_print(''SMBus INUSE did not clear; continuing after timeout\n'');
         }
         return STATUS_SUCCESS;
     } else {
@@ -630,7 +629,7 @@ NTSTATUS:i801_access_simple(addr, read_write, command, size, in, &out)
     if (!NT_SUCCESS(status))
         goto unlock;
 
-    // INUSE_STS is ours only past this point, so only now may we release it
+    // Use the normal release path even after a best-effort INUSE timeout.
     acquired = true;
 
     status = i801_check_pre();
@@ -680,7 +679,7 @@ NTSTATUS:i801_access_block(addr, read_write, command, size, in[33], out[33])
     if (!NT_SUCCESS(status))
         goto unlock;
 
-    // INUSE_STS is ours only past this point, so only now may we release it
+    // Use the normal release path even after a best-effort INUSE timeout.
     acquired = true;
 
     status = i801_check_pre();

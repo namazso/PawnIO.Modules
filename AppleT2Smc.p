@@ -18,7 +18,7 @@
 //  This module maps that window and performs the SMC request/response
 //  handshake in kernel mode, exposing only SMC read / get-key / write
 //  operations - never raw physical memory access. Writes are further
-//  restricted to fan-control keys so the module can't be used to poke
+//  restricted to fan-control keys and a model-specific charge limit. The module cannot poke
 //  arbitrary SMC state.
 //
 //  Register layout, access widths and protocol mirror the Linux T2 applesmc
@@ -211,12 +211,7 @@ bool:is_allowed_write(key) {
     return false;
 }
 
-NTSTATUS:smc_write_op(key, len, data[SMC_MAX_DATA]) {
-    if (len < 0 || len > SMC_MAX_DATA)
-        return STATUS_INVALID_PARAMETER;
-    if (!is_allowed_write(key))
-        return STATUS_ACCESS_DENIED;
-
+NTSTATUS:smc_write_key(key, len, data[SMC_MAX_DATA]) {
     smc_clear_status();
     virtual_write_dword(g_smc_va + SMC_KEY_NAME, key);
     for (new i = 0; i < len; i++)
@@ -288,7 +283,58 @@ DEFINE_IOCTL_SIZED(ioctl_smc_write, 34, 0) {
     for (new i = 0; i < SMC_MAX_DATA; i++)
         data[i] = in[2 + i];
 
-    return smc_write_op(key, len, data);
+    if (!is_allowed_write(key))
+        return STATUS_ACCESS_DENIED;
+    return smc_write_key(key, len, data);
+}
+
+#define CHARGE_LIMIT_KEY 0x534C4843
+
+/// Read or set the T2 CHLS charge limit on MacBookPro16,1.
+/// @param in [0] = -1 to read, 0 to remove the limit, or 1..99 to set the limit.
+/// @param in_size Must be 1.
+/// @param out [0] = current limit in percent, or 100 when the limit is disabled.
+/// @param out_size Must be 1.
+/// @return An NTSTATUS. On write, success requires an exact firmware read-back.
+DEFINE_IOCTL_SIZED(ioctl_charge_limit, 1, 1) {
+    if (g_smc_va == NULL)
+        return STATUS_DEVICE_NOT_READY;
+
+    new request = in[0];
+    if (request < -1 || request > 99)
+        return STATUS_INVALID_PARAMETER;
+    new bios_path[] = ''\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS'';
+    new model[32], model_len = 0;
+    if (reg_query_sz(bios_path, ''SystemProductName'', model, sizeof model, model_len) != STATUS_SUCCESS
+        || str_eq(model, ''MacBookPro16,1'') != 0)
+        return STATUS_NOT_SUPPORTED;
+
+    new data[SMC_MAX_DATA];
+    new NTSTATUS:st = smc_read_op(SMC_GET_TYPE_CMD, CHARGE_LIMIT_KEY, 6, data);
+    if (!NT_SUCCESS(st))
+        return st;
+    if (data[0] != 2 || data[1] != 'h' || data[2] != 'e' || data[3] != 'x' || data[4] != '_')
+        return STATUS_NOT_SUPPORTED;
+    st = smc_read_op(SMC_READ_CMD, CHARGE_LIMIT_KEY, 2, data);
+    if (!NT_SUCCESS(st))
+        return st;
+    if (data[0] > 100)
+        return STATUS_NOT_SUPPORTED;
+
+    if (request >= 0 && request != data[0]) {
+        new flags = data[1];
+        data[0] = request;
+        st = smc_write_key(CHARGE_LIMIT_KEY, 2, data);
+        if (!NT_SUCCESS(st))
+            return st;
+        st = smc_read_op(SMC_READ_CMD, CHARGE_LIMIT_KEY, 2, data);
+        if (!NT_SUCCESS(st))
+            return st;
+        if (data[0] != request || data[1] != flags)
+            return STATUS_UNSUCCESSFUL;
+    }
+    out[0] = data[0] == 0 ? 100 : data[0];
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS:smc_reject() {

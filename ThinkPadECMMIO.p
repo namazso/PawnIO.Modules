@@ -202,26 +202,26 @@ NTSTATUS:main() {
     // ThinkPads identify as manufacturer LENOVO with the model name in
     // SystemFamily or SystemVersion ("ThinkPad T14 Gen 2"), while
     // SystemProductName/SystemSKU hold the machine type (e.g. 20XLS0911R).
-    new bios_path[] = '\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS';
+    new bios_path[] = ''\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS'';
 
     new manufacturer[64];
     new mfg_len = 0;
-    if (reg_query_sz(bios_path, 'SystemManufacturer', manufacturer, sizeof manufacturer, mfg_len) != STATUS_SUCCESS)
+    if (reg_query_sz(bios_path, ''SystemManufacturer'', manufacturer, sizeof manufacturer, mfg_len) != STATUS_SUCCESS)
         return STATUS_NOT_SUPPORTED;
-    if (str_eq(manufacturer, 'LENOVO') != 0)
+    if (str_eq(manufacturer, ''LENOVO'') != 0)
         return STATUS_NOT_SUPPORTED;
 
     new family_str[64];
     new family_len = 0;
-    if (reg_query_sz(bios_path, 'SystemFamily', family_str, sizeof family_str, family_len) != STATUS_SUCCESS)
+    if (reg_query_sz(bios_path, ''SystemFamily'', family_str, sizeof family_str, family_len) != STATUS_SUCCESS)
         family_str[0] = 0;
 
     new version[64];
     new version_len = 0;
-    if (reg_query_sz(bios_path, 'SystemVersion', version, sizeof version, version_len) != STATUS_SUCCESS)
+    if (reg_query_sz(bios_path, ''SystemVersion'', version, sizeof version, version_len) != STATUS_SUCCESS)
         version[0] = 0;
 
-    if (str_prefix(family_str, 'ThinkPad') != 0 && str_prefix(version, 'ThinkPad') != 0)
+    if (str_prefix(family_str, ''ThinkPad'') != 0 && str_prefix(version, ''ThinkPad'') != 0)
         return STATUS_NOT_SUPPORTED;
 
     // Map the window up front; a failed map means the chassis does not
